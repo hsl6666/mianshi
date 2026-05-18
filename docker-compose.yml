@@ -1,0 +1,27 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: sqlite:///./data/interviewer.db
+      PUBLIC_BASE_URL: http://127.0.0.1:8000
+      FRONTEND_ORIGIN: http://127.0.0.1:5173
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
+      GLM_MODEL: glm-4.6
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/data:/app/data
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://127.0.0.1:8000
+        VITE_PUBLIC_BASE_URL: http://127.0.0.1:8000
+        VITE_WIFI_SSID: 面试专用WiFi
+        VITE_WIFI_PASSWORD: 请在前台获取
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
