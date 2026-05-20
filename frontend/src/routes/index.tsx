@@ -1,0 +1,128 @@
+import { createBrowserRouter, Navigate, type RouteObject } from "react-router-dom";
+import { ProgressBar } from "@/components/ProgressBar";
+import { echartsDemoRoute } from "./echarts-demo";
+import { landingRoute } from "./landing";
+import { ROUTE_PATHS } from "@/constants/common";
+
+const routes: RouteObject[] = [
+  {
+    path: "/interview",
+    children: [
+      {
+        index: true,
+        element: <Navigate replace to="basic" />,
+      },
+      {
+        path: "basic",
+        lazy: async () => ({
+          Component: (await import("@/features/interview/pages/BasicInfoPage")).default,
+        }),
+        HydrateFallback: ProgressBar,
+      },
+      {
+        path: "written",
+        lazy: async () => ({
+          Component: (await import("@/features/interview/pages/WrittenExamPage")).default,
+        }),
+        HydrateFallback: ProgressBar,
+      },
+      {
+        path: "oral",
+        lazy: async () => ({
+          Component: (await import("@/features/interview/pages/OralInterviewPage")).default,
+        }),
+        HydrateFallback: ProgressBar,
+      },
+      {
+        path: "done",
+        lazy: async () => ({
+          Component: (await import("@/features/interview/pages/CompletePage")).default,
+        }),
+        HydrateFallback: ProgressBar,
+      },
+      {
+        path: "results",
+        lazy: async () => ({
+          Component: (await import("@/features/interview/pages/ResultsPage")).default,
+        }),
+        HydrateFallback: ProgressBar,
+      },
+    ],
+  },
+  {
+    path: "/",
+    lazy: async () => ({
+      Component: (await import("@/layouts")).default,
+    }),
+    HydrateFallback: ProgressBar,
+    children: [
+      {
+        index: true,
+        element: <Navigate replace to={ROUTE_PATHS.interviewBasic} />,
+      },
+      landingRoute,
+      echartsDemoRoute,
+    ],
+  },
+  {
+    path: "/backend",
+    lazy: async () => ({
+      Component: (await import("@/layouts/backendLayout")).default,
+    }),
+    HydrateFallback: ProgressBar,
+    children: [
+      {
+        index: true,
+        element: <Navigate replace to="./landing" />,
+      },
+      {
+        path: "landing",
+        lazy: async () => ({
+          Component: (await import("@/pages/Landing")).default,
+        }),
+        HydrateFallback: ProgressBar,
+        handle: {
+          title: "首页",
+        },
+      },
+      {
+        path: "echarts-demo",
+        lazy: async () => ({
+          Component: (await import("@/pages/EchartsDemo/Layout")).default,
+        }),
+        HydrateFallback: ProgressBar,
+        handle: {
+          title: "Echarts Demo",
+        },
+      },
+      {
+        path: "tabs-demo",
+        lazy: async () => ({
+          Component: (await import("@/pages/EchartsDemo/Layout")).default,
+        }),
+        HydrateFallback: ProgressBar,
+        handle: {
+          title: "Tabs Demo",
+        },
+      },
+    ],
+  },
+  {
+    path: "*",
+    lazy: async () => ({
+      Component: (await import("@/pages/NotFound")).default,
+    }),
+    HydrateFallback: ProgressBar,
+  },
+];
+
+export const router = createBrowserRouter(routes, {
+  basename: import.meta.env.VITE_APP_BASE_URL,
+  future: {
+    v7_relativeSplatPath: true,
+    v7_fetcherPersist: true,
+    v7_normalizeFormMethod: true,
+    v7_partialHydration: true,
+    v7_skipActionErrorRevalidation: true,
+  },
+});
