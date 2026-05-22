@@ -65,6 +65,47 @@ const routes: RouteObject[] = [
     ],
   },
   {
+    path: "/admin",
+    lazy: async () => ({
+      Component: (await import("@/features/interview/admin/AdminLayout")).default,
+    }),
+    HydrateFallback: ProgressBar,
+    children: [
+      {
+        index: true,
+        element: <Navigate replace to="talents" />,
+      },
+      {
+        path: "talents",
+        lazy: async () => ({
+          Component: (await import("@/features/interview/admin/pages/TalentManagementPage")).default,
+        }),
+        HydrateFallback: ProgressBar,
+      },
+      {
+        path: "positions",
+        lazy: async () => ({
+          Component: (await import("@/features/interview/admin/pages/PositionsManagementPage")).default,
+        }),
+        HydrateFallback: ProgressBar,
+      },
+      {
+        path: "questions",
+        lazy: async () => ({
+          Component: (await import("@/features/interview/admin/pages/QuestionsManagementPage")).default,
+        }),
+        HydrateFallback: ProgressBar,
+      },
+      {
+        path: "models",
+        lazy: async () => ({
+          Component: (await import("@/features/interview/admin/pages/ModelManagementPage")).default,
+        }),
+        HydrateFallback: ProgressBar,
+      },
+    ],
+  },
+  {
     path: "/backend",
     lazy: async () => ({
       Component: (await import("@/layouts/backendLayout")).default,

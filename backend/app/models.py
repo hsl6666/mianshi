@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, Text
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -108,3 +108,46 @@ class OralRecording(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     session: Mapped[InterviewSession] = relationship(back_populates="oral_recordings")
+
+
+class WrittenQuestion(Base):
+    __tablename__ = "written_questions"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    title: Mapped[str] = mapped_column(String(200), default="")
+    type: Mapped[str] = mapped_column(String(20), default="short")
+    prompt: Mapped[str] = mapped_column(Text, default="")
+    options: Mapped[list] = mapped_column(JSON, default=list)
+    starter_code: Mapped[str] = mapped_column(Text, default="")
+    language: Mapped[str] = mapped_column(String(60), default="typescript")
+    role_tags: Mapped[str] = mapped_column(String(400), default="")
+    difficulty: Mapped[str] = mapped_column(String(40), default="medium")
+    source: Mapped[str] = mapped_column(String(40), default="manual")
+    published: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+class JobPosition(Base):
+    __tablename__ = "job_positions"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+class LlmModelConfig(Base):
+    __tablename__ = "llm_model_config"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default="global")
+    provider: Mapped[str] = mapped_column(String(60), default="zhipu")
+    model: Mapped[str] = mapped_column(String(120), default="glm-4.6")
+    api_base_url: Mapped[str] = mapped_column(String(600), default="https://open.bigmodel.cn/api/paas/v4")
+    api_key: Mapped[str] = mapped_column(Text, default="")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)

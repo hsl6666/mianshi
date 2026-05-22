@@ -4,10 +4,11 @@ from datetime import datetime
 from typing import Literal
 from typing import Dict, List, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CandidateProfile(BaseModel):
+    profile_photo_data_url: str = ""
     name: str = ""
     age: str = ""
     id_number: str = ""
@@ -118,6 +119,103 @@ class Question(BaseModel):
     prompt: str = ""
     starter_code: str = ""
     language: str = "typescript"
+
+
+class WrittenQuestionCreate(BaseModel):
+    title: str
+    type: Literal["single", "multi", "short", "code"]
+    prompt: str
+    options: list[QuestionOption] = Field(default_factory=list)
+    starter_code: str = ""
+    language: str = "typescript"
+    role_tags: str = ""
+    difficulty: str = "medium"
+    source: str = "manual"
+    published: bool = False
+
+
+class WrittenQuestionUpdate(BaseModel):
+    title: Optional[str] = None
+    type: Optional[Literal["single", "multi", "short", "code"]] = None
+    prompt: Optional[str] = None
+    options: Optional[list[QuestionOption]] = None
+    starter_code: Optional[str] = None
+    language: Optional[str] = None
+    role_tags: Optional[str] = None
+    difficulty: Optional[str] = None
+    source: Optional[str] = None
+    published: Optional[bool] = None
+
+
+class WrittenQuestionRead(Question):
+    model_config = ConfigDict(from_attributes=True)
+
+    role_tags: str = ""
+    difficulty: str = "medium"
+    source: str = "manual"
+    published: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+
+class QuestionGenerationRequest(BaseModel):
+    role: str = ""
+    count: int = Field(default=5, ge=1, le=20)
+    system_prompt: str = ""
+    user_prompt: str = ""
+    difficulty: str = "medium"
+    question_types: list[Literal["single", "multi", "short", "code"]] = Field(default_factory=list)
+
+
+class QuestionGenerationResponse(BaseModel):
+    questions: list[Question]
+    system_prompt: str
+    fallback_used: bool = False
+
+
+class LlmModelConfigRead(BaseModel):
+    provider: str
+    model: str
+    api_base_url: str
+    enabled: bool
+    has_api_key: bool
+    api_key_masked: str = ""
+    updated_at: datetime
+
+
+class LlmModelConfigUpdate(BaseModel):
+    provider: str
+    model: str
+    api_base_url: str = ""
+    api_key: Optional[str] = None
+    enabled: bool = True
+    clear_api_key: bool = False
+
+
+class JobPositionCreate(BaseModel):
+    name: str
+    description: str = ""
+    enabled: bool = True
+    sort_order: int = 0
+
+
+class JobPositionUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    enabled: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+class JobPositionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    description: str
+    enabled: bool
+    sort_order: int
+    created_at: datetime
+    updated_at: datetime
 
 
 class WrittenExamSubmission(BaseModel):

@@ -4,11 +4,19 @@ import type {
   InterviewResultDetail,
   InterviewResultSummary,
   InterviewSession,
+  JobPosition,
+  JobPositionCreate,
+  JobPositionUpdate,
+  LlmModelConfig,
+  LlmModelConfigUpdate,
   Question,
+  QuestionGenerationRequest,
+  QuestionGenerationResponse,
+  WrittenQuestion,
   WrittenExamSubmission,
 } from "./types";
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8010";
 export const PUBLIC_BASE_URL = import.meta.env.VITE_PUBLIC_BASE_URL || API_BASE_URL;
 
 const client = axios.create({
@@ -57,6 +65,69 @@ export async function fetchInterviewResultDetail(sessionId: string) {
 
 export async function fetchQuestions(role: string) {
   const { data } = await client.get<Question[]>("/api/questions", { params: { role } });
+  return data;
+}
+
+export async function fetchPositions() {
+  const { data } = await client.get<JobPosition[]>("/api/positions");
+  return data;
+}
+
+export async function fetchAdminPositions() {
+  const { data } = await client.get<JobPosition[]>("/api/admin/positions");
+  return data;
+}
+
+export async function createAdminPosition(payload: JobPositionCreate) {
+  const { data } = await client.post<JobPosition>("/api/admin/positions", payload);
+  return data;
+}
+
+export async function updateAdminPosition(positionId: string, payload: JobPositionUpdate) {
+  const { data } = await client.patch<JobPosition>(`/api/admin/positions/${positionId}`, payload);
+  return data;
+}
+
+export async function deleteAdminPosition(positionId: string) {
+  const { data } = await client.delete<{ ok: boolean }>(`/api/admin/positions/${positionId}`);
+  return data;
+}
+
+export async function fetchAdminWrittenQuestions() {
+  const { data } = await client.get<WrittenQuestion[]>("/api/admin/written-questions");
+  return data;
+}
+
+export async function createAdminWrittenQuestion(payload: Omit<WrittenQuestion, "id" | "created_at" | "updated_at">) {
+  const { data } = await client.post<WrittenQuestion>("/api/admin/written-questions", payload);
+  return data;
+}
+
+export async function updateAdminWrittenQuestion(
+  questionId: string,
+  payload: Partial<Omit<WrittenQuestion, "id" | "created_at" | "updated_at">>,
+) {
+  const { data } = await client.patch<WrittenQuestion>(`/api/admin/written-questions/${questionId}`, payload);
+  return data;
+}
+
+export async function deleteAdminWrittenQuestion(questionId: string) {
+  const { data } = await client.delete<{ ok: boolean }>(`/api/admin/written-questions/${questionId}`);
+  return data;
+}
+
+export async function generateAdminWrittenQuestions(payload: QuestionGenerationRequest) {
+  const { data } = await client.post<QuestionGenerationResponse>("/api/admin/written-questions/generate", payload, { timeout: 120_000 });
+  return data;
+}
+
+export async function fetchAdminModelConfig() {
+  const { data } = await client.get<LlmModelConfig>("/api/admin/model-config");
+  return data;
+}
+
+export async function updateAdminModelConfig(payload: LlmModelConfigUpdate) {
+  const { data } = await client.put<LlmModelConfig>("/api/admin/model-config", payload);
   return data;
 }
 

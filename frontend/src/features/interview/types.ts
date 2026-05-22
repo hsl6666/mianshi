@@ -22,6 +22,7 @@ export type FamilyMember = {
 };
 
 export type CandidateProfile = {
+  profile_photo_data_url: string;
   name: string;
   age: string;
   id_number: string;
@@ -117,6 +118,70 @@ export type Question = {
   prompt: string;
   starter_code: string;
   language: string;
+};
+
+export type WrittenQuestion = Question & {
+  role_tags: string;
+  difficulty: string;
+  source: string;
+  published: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type JobPosition = {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type JobPositionCreate = {
+  name: string;
+  description?: string;
+  enabled?: boolean;
+  sort_order?: number;
+};
+
+export type JobPositionUpdate = Partial<JobPositionCreate>;
+
+export type QuestionGenerationRequest = {
+  role: string;
+  count: number;
+  system_prompt: string;
+  user_prompt: string;
+  difficulty: string;
+  question_types: QuestionType[];
+};
+
+export type QuestionGenerationResponse = {
+  questions: Question[];
+  system_prompt: string;
+  fallback_used: boolean;
+};
+
+export type LlmProvider = "zhipu" | "openai" | "deepseek" | "qwen" | "custom";
+
+export type LlmModelConfig = {
+  provider: LlmProvider;
+  model: string;
+  api_base_url: string;
+  enabled: boolean;
+  has_api_key: boolean;
+  api_key_masked: string;
+  updated_at: string;
+};
+
+export type LlmModelConfigUpdate = {
+  provider: LlmProvider;
+  model: string;
+  api_base_url: string;
+  api_key?: string;
+  enabled: boolean;
+  clear_api_key?: boolean;
 };
 
 export type WrittenAnswers = Record<string, string | string[]>;

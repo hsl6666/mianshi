@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
-import { Button, DatePicker, Input, Select, Space, Tag, Upload, message, type UploadProps } from "antd";
-import { ArrowRightOutlined, FileTextOutlined, PrinterOutlined, ReloadOutlined, UploadOutlined } from "@ant-design/icons";
+import { Button, DatePicker, Input, Modal, Select, Space, Tag, Upload, message, type UploadProps } from "antd";
+import { ArrowRightOutlined, CameraOutlined, CloseOutlined, FileTextOutlined, PrinterOutlined, ReloadOutlined, UploadOutlined } from "@ant-design/icons";
 import {
   createOrUpdateSession,
   fetchSession,
@@ -10,6 +10,7 @@ import {
   resolveAssetUrl,
   uploadResumeAttachment,
 } from "../api";
+import PositionSelect from "../components/PositionSelect";
 import { emptyProfile, getInterviewSessionId, loadProfile, saveProfile } from "../storage";
 import type { CandidateProfile, EducationExperience, FamilyMember, InterviewSession, WorkExperience } from "../types";
 
@@ -36,8 +37,11 @@ export default function BasicInfoPage() {
   const [session, setSession] = useState<InterviewSession | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [cameraActive, setCameraActive] = useState(false);
   const [appliedParsedAt, setAppliedParsedAt] = useState("");
   const saveTimer = useRef<number>();
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
   const errors = validateProfile(profile);
   const parsedFields = session?.parsed_profile || {};
   const hasParsedFields = Object.values(parsedFields).some(Boolean) && appliedParsedAt !== session?.updated_at;
@@ -56,6 +60,19 @@ export default function BasicInfoPage() {
     }, 2000);
     return () => window.clearInterval(timer);
   }, [sessionId]);
+
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, []);
+
+  function attachVideoStream(node: HTMLVideoElement | null) {
+    videoRef.current = node;
+    if (!node || !cameraStreamRef.current) return;
+    node.srcObject = cameraStreamRef.current;
+    void node.play().catch(() => undefined);
+  }
 
   function updateField(key: TextFieldKey, value: string) {
     const next = { ...profile, [key]: value };
@@ -92,6 +109,69 @@ export default function BasicInfoPage() {
   function queueLocalSave(next: CandidateProfile) {
     window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => saveProfile(sessionId, next), 350);
+  }
+
+  function updatePhoto(value: string) {
+    const next = { ...profile, profile_photo_data_url: value };
+    setProfile(next);
+    queueLocalSave(next);
+  }
+
+  function handlePhotoFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      message.warning("请选择图片文件");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        updatePhoto(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function startCamera() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      message.error("当前浏览器不支持摄像头");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      cameraStreamRef.current = stream;
+      setCameraActive(true);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        void videoRef.current.play().catch(() => undefined);
+      }
+    } catch {
+      message.error("摄像头开启失败，请检查权限");
+    }
+  }
+
+  function stopCamera() {
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setCameraActive(false);
+  }
+
+  function capturePhoto() {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth || 480;
+    canvas.height = video.videoHeight || 360;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    updatePhoto(canvas.toDataURL("image/jpeg", 0.9));
+    stopCamera();
+    message.success("照片已保存");
   }
 
   function applyParsedProfile() {
@@ -210,11 +290,11 @@ export default function BasicInfoPage() {
           <div className="mb-[6px] grid grid-cols-[1fr_260px] gap-8 text-[15px] font-semibold max-[760px]:min-w-[820px]">
             <label className="grid grid-cols-[auto_1fr] items-center gap-2">
               <span>应聘职位：</span>
-              <Input
+              <PositionSelect
                 variant="borderless"
-                value={profile.role}
-                onChange={(event) => updateField("role", event.target.value)}
-                className="!h-7 !rounded-none !border-0 !border-b !border-[#555] !bg-transparent !px-1"
+                value={profile.role || undefined}
+                onChange={(value) => updateField("role", value || "")}
+                className="!h-7 !w-full [&_.ant-select-selector]:!rounded-none [&_.ant-select-selector]:!border-0 [&_.ant-select-selector]:!border-b [&_.ant-select-selector]:!border-[#555] [&_.ant-select-selector]:!bg-transparent [&_.ant-select-selector]:!px-1 [&_.ant-select-selection-item]:!text-[15px]"
               />
             </label>
             <label className="grid grid-cols-[auto_1fr] items-center gap-2">
@@ -251,11 +331,33 @@ export default function BasicInfoPage() {
                 <td className={tableCellClass}>{selectInput("gender", ["男", "女"])}</td>
                 <td className={labelCellClass}>年龄</td>
                 <td className={tableCellClass}>{textInput("age", "number")}</td>
-                <td className={`${tableCellClass} bg-[#fcfcfc] text-center text-sm text-[#777]`} rowSpan={6}>
-                  <div className="flex min-h-[168px] flex-col items-center justify-center gap-2">
-                    <span>照片</span>
-                    <span className="text-xs text-slate-400">口试摄像头抽帧自动留存</span>
-                  </div>
+                <td className={`${tableCellClass} bg-[#fcfcfc] p-2 text-center text-sm text-[#777]`} rowSpan={6}>
+                  {profile.profile_photo_data_url ? (
+                    <div className="relative h-full min-h-[168px] w-full overflow-hidden rounded-md bg-white p-1 shadow-[0_4px_12px_rgba(15,23,42,0.16)]">
+                      <img src={profile.profile_photo_data_url} alt="候选人照片" className="h-full min-h-[160px] w-full rounded object-cover" />
+                      <Button
+                        type="primary"
+                        shape="circle"
+                        danger
+                        size="small"
+                        icon={<CloseOutlined />}
+                        className="!absolute right-2 top-2"
+                        onClick={() => updatePhoto("")}
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex min-h-[168px] flex-col items-center justify-center gap-2 p-2">
+                      <div className="flex flex-wrap items-center justify-center gap-1">
+                        <label className="cursor-pointer">
+                          <input type="file" accept="image/*" className="hidden" onChange={handlePhotoFileChange} />
+                          <span className="inline-flex h-7 items-center rounded border border-slate-300 px-2 text-xs text-slate-700">上传照片</span>
+                        </label>
+                        <Button size="small" icon={<CameraOutlined />} onClick={() => void startCamera()}>
+                          开启摄像头
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </td>
               </tr>
               <tr>
@@ -442,6 +544,26 @@ export default function BasicInfoPage() {
             </Button>
           </div>
         </form>
+        <Modal
+          title="摄像头拍照"
+          open={cameraActive}
+          onCancel={stopCamera}
+          destroyOnClose
+          width={520}
+          footer={[
+            <Button key="cancel" onClick={stopCamera}>
+              取消
+            </Button>,
+            <Button key="capture" type="primary" onClick={capturePhoto}>
+              拍摄并使用
+            </Button>,
+          ]}
+        >
+          <p className="mb-2 text-xs text-slate-500">请先调整好角度与光线，再点击“拍摄并使用”。</p>
+          <div className="overflow-hidden rounded border border-slate-200 bg-black">
+            <video ref={attachVideoStream} autoPlay playsInline muted className="h-[360px] w-full object-cover" />
+          </div>
+        </Modal>
       </section>
     </main>
   );

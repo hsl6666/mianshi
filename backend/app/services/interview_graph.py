@@ -1,9 +1,8 @@
 from dataclasses import dataclass
-import os
 
-import httpx
+from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
+from app.services.llm_config import chat_completion
 
 
 STAGES = ["intro", "project_deep_dive", "logic", "behavior", "closing"]
@@ -26,33 +25,22 @@ def build_role_card(tone: str = "friendly") -> str:
     )
 
 
-async def generate_interview_reply(payload: InterviewInput) -> tuple[str, str]:
+async def generate_interview_reply(payload: InterviewInput, db: Session) -> tuple[str, str]:
     stage = _pick_stage(len([item for item in payload.conversation_history if item.get("speaker") == "assistant"]))
     fallback = _fallback_reply(stage, payload.role, payload.resume_summary)
 
-    settings = get_settings()
-    if not settings.zhipu_api_key:
-        return fallback, stage
-
     prompt = _build_prompt(stage, payload)
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(
-                "https://open.bigmodel.cn/api/paas/v4/chat/completions",
-                headers={"Authorization": f"Bearer {settings.zhipu_api_key}"},
-                json={
-                    "model": settings.glm_model,
-                    "messages": [
-                        {"role": "system", "content": build_role_card()},
-                        {"role": "user", "content": prompt},
-                    ],
-                    "temperature": 0.6,
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-            text = data["choices"][0]["message"]["content"].strip()
-            return text or fallback, stage
+        text = await chat_completion(
+            db,
+            messages=[
+                {"role": "system", "content": build_role_card()},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.6,
+            timeout=30,
+        )
+        return text or fallback, stage
     except Exception:
         return fallback, stage
 

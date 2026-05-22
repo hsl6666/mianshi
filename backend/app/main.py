@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api import questions, results, rtc, sessions
+from app.api import model_config, positions, questions, results, rtc, sessions
 from app.core.config import get_settings
 from app.db import init_db
 
@@ -24,6 +24,8 @@ app.mount("/snapshots", StaticFiles(directory=settings.snapshots_dir), name="sna
 
 app.include_router(sessions.router)
 app.include_router(questions.router)
+app.include_router(positions.router)
+app.include_router(model_config.router)
 app.include_router(rtc.router)
 app.include_router(results.router)
 

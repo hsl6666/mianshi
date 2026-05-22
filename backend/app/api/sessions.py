@@ -229,7 +229,8 @@ async def start_oral_interview(
             role=session.role,
             resume_summary=session.resume_text or str(session.parsed_profile or {}),
             conversation_history=_history(session),
-        )
+        ),
+        db,
     )
     db.add(Transcript(session_id=session_id, speaker="assistant", text=text, event_type="completed"))
     session.status = "oral_started"
@@ -254,7 +255,8 @@ async def respond_oral_interview(
             role=session.role,
             resume_summary=session.resume_text or str(session.parsed_profile or {}),
             conversation_history=_history(session) + [{"speaker": "user", "text": payload.text}],
-        )
+        ),
+        db,
     )
     db.add(Transcript(session_id=session_id, speaker="assistant", text=text, event_type="completed"))
     db.commit()

@@ -7,12 +7,13 @@ const ANSWERS_PREFIX = "ai-interview-answers:";
 const ORAL_PREFIX = "ai-interview-oral:";
 
 export const emptyProfile: CandidateProfile = {
+  profile_photo_data_url: "",
   name: "",
   age: "",
   id_number: "",
   phone: "",
   email: "",
-  role: "AI应用开发工程师",
+  role: "",
   fill_date: dayjs().format("YYYY-MM-DD"),
   gender: "",
   birth_month: "",
