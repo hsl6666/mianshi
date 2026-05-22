@@ -6,50 +6,6 @@ import { ROUTE_PATHS } from "@/constants/common";
 
 const routes: RouteObject[] = [
   {
-    path: "/interview",
-    children: [
-      {
-        index: true,
-        element: <Navigate replace to="basic" />,
-      },
-      {
-        path: "basic",
-        lazy: async () => ({
-          Component: (await import("@/features/interview/pages/BasicInfoPage")).default,
-        }),
-        HydrateFallback: ProgressBar,
-      },
-      {
-        path: "written",
-        lazy: async () => ({
-          Component: (await import("@/features/interview/pages/WrittenExamPage")).default,
-        }),
-        HydrateFallback: ProgressBar,
-      },
-      {
-        path: "oral",
-        lazy: async () => ({
-          Component: (await import("@/features/interview/pages/OralInterviewPage")).default,
-        }),
-        HydrateFallback: ProgressBar,
-      },
-      {
-        path: "done",
-        lazy: async () => ({
-          Component: (await import("@/features/interview/pages/CompletePage")).default,
-        }),
-        HydrateFallback: ProgressBar,
-      },
-      {
-        path: "results",
-        lazy: async () => ({
-          Component: (await import("@/features/interview/pages/ResultsPage")).default,
-        }),
-        HydrateFallback: ProgressBar,
-      },
-    ],
-  },
-  {
     path: "/",
     lazy: async () => ({
       Component: (await import("@/layouts")).default,
@@ -58,51 +14,10 @@ const routes: RouteObject[] = [
     children: [
       {
         index: true,
-        element: <Navigate replace to={ROUTE_PATHS.interviewBasic} />,
+        element: <Navigate replace to={ROUTE_PATHS.landing} />,
       },
       landingRoute,
       echartsDemoRoute,
-    ],
-  },
-  {
-    path: "/admin",
-    lazy: async () => ({
-      Component: (await import("@/features/interview/admin/AdminLayout")).default,
-    }),
-    HydrateFallback: ProgressBar,
-    children: [
-      {
-        index: true,
-        element: <Navigate replace to="talents" />,
-      },
-      {
-        path: "talents",
-        lazy: async () => ({
-          Component: (await import("@/features/interview/admin/pages/TalentManagementPage")).default,
-        }),
-        HydrateFallback: ProgressBar,
-      },
-      {
-        path: "positions",
-        lazy: async () => ({
-          Component: (await import("@/features/interview/admin/pages/PositionsManagementPage")).default,
-        }),
-        HydrateFallback: ProgressBar,
-      },
-      {
-        path: "questions",
-        lazy: async () => ({
-          Component: (await import("@/features/interview/admin/pages/QuestionsManagementPage")).default,
-        }),
-        HydrateFallback: ProgressBar,
-      },
-      {
-        path: "models",
-        lazy: async () => ({
-          Component: (await import("@/features/interview/admin/pages/ModelManagementPage")).default,
-        }),
-        HydrateFallback: ProgressBar,
-      },
     ],
   },
   {
@@ -134,16 +49,6 @@ const routes: RouteObject[] = [
         HydrateFallback: ProgressBar,
         handle: {
           title: "Echarts Demo",
-        },
-      },
-      {
-        path: "tabs-demo",
-        lazy: async () => ({
-          Component: (await import("@/pages/EchartsDemo/Layout")).default,
-        }),
-        HydrateFallback: ProgressBar,
-        handle: {
-          title: "Tabs Demo",
         },
       },
     ],

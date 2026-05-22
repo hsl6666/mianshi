@@ -4,8 +4,3 @@ sqlalchemy==2.0.36
 pydantic-settings==2.7.0
 python-multipart==0.0.20
 httpx==0.28.1
-pymupdf==1.25.1
-rapidocr-onnxruntime==1.4.4
-langgraph==0.2.60
-aiortc==1.9.0
-av==12.3.0
