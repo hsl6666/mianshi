@@ -14,7 +14,7 @@ export default function UserAvatar() {
         </>
       ),
       onClick: () => {
-        navigate(ROUTE_PATHS.landing);
+        navigate(ROUTE_PATHS.biddingProjects);
       },
     },
   ];

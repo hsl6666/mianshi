@@ -1,8 +1,8 @@
-# 全栈后端基础框架
+# 招投标咨询后端 API
 
-FastAPI + SQLAlchemy 脚手架，仅包含健康检查与数据库初始化。
+FastAPI + SQLAlchemy，SQLite 存储项目与附件元数据，文件保存在 `data/uploads/`。
 
-## 本地启动
+## 启动
 
 ```bash
 cd backend
@@ -13,4 +13,4 @@ cp .env.example .env
 uvicorn app.main:app --host 0.0.0.0 --port 8010 --reload
 ```
 
-健康检查：`GET /health`
+接口文档：http://127.0.0.1:8010/docs

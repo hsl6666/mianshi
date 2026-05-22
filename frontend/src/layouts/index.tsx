@@ -1,54 +1,37 @@
 import { useEffect } from "react";
-import { Button, Flex, Layout } from "antd";
+import { Flex, Layout, Typography } from "antd";
 import { AppHelmet } from "@/components/Helmet";
 import { ThemeSwitch } from "@/components/ThemeSwitch";
-import Breadcrumb from "./components/bread-crumb";
-import CustomSkin from "./components/custom-skin";
 import Content from "./components/main-content";
-import SiderBar from "./components/sider-bar";
 import UserAvatar from "./components/user-avatar";
-import { setCollapsed, useSelector, useSettingsStore } from "@/store";
-import { MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons";
 
 export default function MainLayout() {
-  const { collapsed } = useSettingsStore(useSelector(["collapsed"]));
-
-  // 设置header阴影
   useEffect(() => {
     const handleScroll = () => {
       const scrollTop = document.scrollingElement?.scrollTop || document.body.scrollTop;
       const className = "shadow-[0_6px_10px_-10px_rgba(0,0,0,0.3)]";
-      if (scrollTop > 0) {
-        document.getElementById("app-header-bar")?.classList.add(className);
-      } else {
-        document.getElementById("app-header-bar")?.classList.remove(className);
-      }
+      const header = document.getElementById("app-header-bar");
+      if (!header) return;
+      if (scrollTop > 0) header.classList.add(className);
+      else header.classList.remove(className);
     };
     window.addEventListener("scroll", handleScroll);
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-    };
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
   return (
     <>
       <AppHelmet />
-      <Layout>
-        <SiderBar />
+      <Layout className="min-h-screen">
         <Layout>
           <Layout.Header
             id="app-header-bar"
-            className="flex items-center sticky top-0 z-[999] pl-0 bg-white dark:bg-[#001529]"
+            className="flex items-center sticky top-0 z-[999] px-3 md:px-4 bg-white dark:bg-[#001529] h-14 md:h-16"
           >
-            <Button
-              type="text"
-              icon={collapsed ? <span><MenuUnfoldOutlined></MenuUnfoldOutlined></span> : <span> <MenuFoldOutlined></MenuFoldOutlined></span>}
-              onClick={() => setCollapsed(!collapsed)}
-              className="mr-2"
-            />
-            <Breadcrumb />
-            <Flex gap={12} className="ml-auto items-center">
-              <CustomSkin />
+            <Typography.Text strong className="text-base md:text-lg">
+              招投标项目管理
+            </Typography.Text>
+            <Flex gap={8} className="ml-auto items-center shrink-0">
               <ThemeSwitch />
               <UserAvatar />
             </Flex>

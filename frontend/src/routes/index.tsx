@@ -1,7 +1,5 @@
 import { createBrowserRouter, Navigate, type RouteObject } from "react-router-dom";
 import { ProgressBar } from "@/components/ProgressBar";
-import { echartsDemoRoute } from "./echarts-demo";
-import { landingRoute } from "./landing";
 import { ROUTE_PATHS } from "@/constants/common";
 
 const routes: RouteObject[] = [
@@ -14,51 +12,23 @@ const routes: RouteObject[] = [
     children: [
       {
         index: true,
-        element: <Navigate replace to={ROUTE_PATHS.landing} />,
-      },
-      landingRoute,
-      echartsDemoRoute,
-    ],
-  },
-  {
-    path: "/backend",
-    lazy: async () => ({
-      Component: (await import("@/layouts/backendLayout")).default,
-    }),
-    HydrateFallback: ProgressBar,
-    children: [
-      {
-        index: true,
-        element: <Navigate replace to="./landing" />,
+        element: <Navigate replace to={ROUTE_PATHS.biddingProjects} />,
       },
       {
-        path: "landing",
+        path: ROUTE_PATHS.biddingProjects.slice(1),
         lazy: async () => ({
-          Component: (await import("@/pages/Landing")).default,
+          Component: (await import("@/features/bidding/pages/ProjectListPage")).default,
         }),
         HydrateFallback: ProgressBar,
         handle: {
-          title: "首页",
-        },
-      },
-      {
-        path: "echarts-demo",
-        lazy: async () => ({
-          Component: (await import("@/pages/EchartsDemo/Layout")).default,
-        }),
-        HydrateFallback: ProgressBar,
-        handle: {
-          title: "Echarts Demo",
+          title: "招投标项目",
         },
       },
     ],
   },
   {
     path: "*",
-    lazy: async () => ({
-      Component: (await import("@/pages/NotFound")).default,
-    }),
-    HydrateFallback: ProgressBar,
+    element: <Navigate replace to={ROUTE_PATHS.biddingProjects} />,
   },
 ];
 
