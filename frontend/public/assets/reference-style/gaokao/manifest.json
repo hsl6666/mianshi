@@ -1,0 +1,275 @@
+{
+  "sourceReference": "/Users/xiaolinzi/Downloads/ChatGPT Image 2026年5月23日 09_49_30.png",
+  "referenceCanvas": {
+    "width": 941,
+    "height": 1672
+  },
+  "assets": {
+    "status-icons": {
+      "file": "/assets/reference-style/gaokao/status-icons.png",
+      "sourceBox": [
+        752,
+        24,
+        901,
+        57
+      ],
+      "role": "decorative",
+      "size": {
+        "width": 149,
+        "height": 33
+      }
+    },
+    "mini-program-capsule": {
+      "file": "/assets/reference-style/gaokao/mini-program-capsule.png",
+      "sourceBox": [
+        739,
+        72,
+        913,
+        131
+      ],
+      "role": "decorative",
+      "size": {
+        "width": 174,
+        "height": 59
+      }
+    },
+    "hero-campus": {
+      "file": "/assets/reference-style/gaokao/hero-campus.png",
+      "sourceBox": [
+        548,
+        146,
+        941,
+        562
+      ],
+      "role": "decorative",
+      "size": {
+        "width": 393,
+        "height": 416
+      }
+    },
+    "title-leaf-left": {
+      "file": "/assets/reference-style/gaokao/title-leaf-left.png",
+      "sourceBox": [
+        266,
+        584,
+        303,
+        615
+      ],
+      "role": "decorative",
+      "size": {
+        "width": 37,
+        "height": 31
+      }
+    },
+    "title-leaf-right": {
+      "file": "/assets/reference-style/gaokao/title-leaf-right.png",
+      "sourceBox": [
+        637,
+        584,
+        674,
+        615
+      ],
+      "role": "decorative",
+      "size": {
+        "width": 37,
+        "height": 31
+      }
+    },
+    "option-impact-icon": {
+      "file": "/assets/reference-style/gaokao/option-impact-icon.png",
+      "sourceBox": [
+        108,
+        646,
+        205,
+        742
+      ],
+      "role": "decorative",
+      "size": {
+        "width": 97,
+        "height": 96
+      }
+    },
+    "option-stable-icon": {
+      "file": "/assets/reference-style/gaokao/option-stable-icon.png",
+      "sourceBox": [
+        108,
+        775,
+        205,
+        871
+      ],
+      "role": "decorative",
+      "size": {
+        "width": 97,
+        "height": 96
+      }
+    },
+    "option-safe-icon": {
+      "file": "/assets/reference-style/gaokao/option-safe-icon.png",
+      "sourceBox": [
+        108,
+        904,
+        205,
+        1000
+      ],
+      "role": "decorative",
+      "size": {
+        "width": 97,
+        "height": 96
+      }
+    },
+    "criterion-score-icon": {
+      "file": "/assets/reference-style/gaokao/criterion-score-icon.png",
+      "sourceBox": [
+        126,
+        1125,
+        183,
+        1176
+      ],
+      "role": "decorative",
+      "size": {
+        "width": 57,
+        "height": 51
+      }
+    },
+    "criterion-rank-icon": {
+      "file": "/assets/reference-style/gaokao/criterion-rank-icon.png",
+      "sourceBox": [
+        337,
+        1125,
+        395,
+        1178
+      ],
+      "role": "decorative",
+      "size": {
+        "width": 58,
+        "height": 53
+      }
+    },
+    "criterion-area-icon": {
+      "file": "/assets/reference-style/gaokao/criterion-area-icon.png",
+      "sourceBox": [
+        548,
+        1124,
+        607,
+        1181
+      ],
+      "role": "decorative",
+      "size": {
+        "width": 59,
+        "height": 57
+      }
+    },
+    "criterion-interest-icon": {
+      "file": "/assets/reference-style/gaokao/criterion-interest-icon.png",
+      "sourceBox": [
+        763,
+        1125,
+        820,
+        1175
+      ],
+      "role": "decorative",
+      "size": {
+        "width": 57,
+        "height": 50
+      }
+    },
+    "step-input-icon": {
+      "file": "/assets/reference-style/gaokao/step-input-icon.png",
+      "sourceBox": [
+        120,
+        1361,
+        183,
+        1421
+      ],
+      "role": "decorative",
+      "size": {
+        "width": 63,
+        "height": 60
+      }
+    },
+    "step-ai-icon": {
+      "file": "/assets/reference-style/gaokao/step-ai-icon.png",
+      "sourceBox": [
+        434,
+        1361,
+        496,
+        1421
+      ],
+      "role": "decorative",
+      "size": {
+        "width": 62,
+        "height": 60
+      }
+    },
+    "step-output-icon": {
+      "file": "/assets/reference-style/gaokao/step-output-icon.png",
+      "sourceBox": [
+        746,
+        1361,
+        812,
+        1421
+      ],
+      "role": "decorative",
+      "size": {
+        "width": 66,
+        "height": 60
+      }
+    },
+    "security-shield-icon": {
+      "file": "/assets/reference-style/gaokao/security-shield-icon.png",
+      "sourceBox": [
+        342,
+        1526,
+        366,
+        1551
+      ],
+      "role": "decorative",
+      "size": {
+        "width": 24,
+        "height": 25
+      }
+    },
+    "tab-home-icon": {
+      "file": "/assets/reference-style/gaokao/tab-home-icon.png",
+      "sourceBox": [
+        145,
+        1581,
+        187,
+        1624
+      ],
+      "role": "decorative",
+      "size": {
+        "width": 42,
+        "height": 43
+      }
+    },
+    "tab-plan-icon": {
+      "file": "/assets/reference-style/gaokao/tab-plan-icon.png",
+      "sourceBox": [
+        454,
+        1579,
+        493,
+        1623
+      ],
+      "role": "decorative",
+      "size": {
+        "width": 39,
+        "height": 44
+      }
+    },
+    "tab-user-icon": {
+      "file": "/assets/reference-style/gaokao/tab-user-icon.png",
+      "sourceBox": [
+        756,
+        1579,
+        803,
+        1624
+      ],
+      "role": "decorative",
+      "size": {
+        "width": 47,
+        "height": 45
+      }
+    }
+  }
+}

@@ -1,0 +1,122 @@
+{
+  "referenceCanvas": {
+    "width": 941,
+    "height": 1672
+  },
+  "targetViewport": {
+    "width": 941
+  },
+  "scale": 1,
+  "sections": [
+    {
+      "name": "status-bar",
+      "y": 0,
+      "height": 70,
+      "heightPct": 0.042
+    },
+    {
+      "name": "nav-bar",
+      "y": 70,
+      "height": 76,
+      "heightPct": 0.045
+    },
+    {
+      "name": "hero",
+      "y": 146,
+      "height": 414,
+      "heightPct": 0.248
+    },
+    {
+      "name": "plans-card",
+      "y": 559,
+      "height": 469,
+      "heightPct": 0.281
+    },
+    {
+      "name": "criteria-card",
+      "y": 1047,
+      "height": 218,
+      "heightPct": 0.13
+    },
+    {
+      "name": "flow-card",
+      "y": 1280,
+      "height": 286,
+      "heightPct": 0.171
+    },
+    {
+      "name": "tab-bar",
+      "y": 1566,
+      "height": 106,
+      "heightPct": 0.063
+    }
+  ],
+  "regions": {
+    "heroTitle": {
+      "x": 62,
+      "y": 239,
+      "w": 560,
+      "h": 104
+    },
+    "heroSubTitle": {
+      "x": 83,
+      "y": 373,
+      "w": 486,
+      "h": 36
+    },
+    "heroCopy": {
+      "x": 67,
+      "y": 451,
+      "w": 480,
+      "h": 68
+    },
+    "heroCampus": {
+      "x": 548,
+      "y": 146,
+      "w": 393,
+      "h": 416,
+      "fit": "contain"
+    },
+    "plansCard": {
+      "x": 49,
+      "y": 559,
+      "w": 842,
+      "h": 469
+    },
+    "planRows": {
+      "x": 75,
+      "y": 634,
+      "w": 789,
+      "h": 368
+    },
+    "criteriaCard": {
+      "x": 49,
+      "y": 1047,
+      "w": 842,
+      "h": 218
+    },
+    "flowCard": {
+      "x": 49,
+      "y": 1280,
+      "w": 842,
+      "h": 286
+    },
+    "cta": {
+      "x": 67,
+      "y": 1442,
+      "w": 806,
+      "h": 68
+    },
+    "tabBar": {
+      "x": 0,
+      "y": 1566,
+      "w": 941,
+      "h": 106
+    }
+  },
+  "grid": {
+    "containerX": 49,
+    "containerW": 842,
+    "gutter": 16
+  }
+}

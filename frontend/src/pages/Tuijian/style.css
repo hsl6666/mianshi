@@ -1,0 +1,349 @@
+.tuijian-page {
+  --ref-width: 941px;
+  --ref-height: 1672px;
+  --color-bg: #f3f6fb;
+  --color-primary: #4f7cff;
+  --color-text-main: #1f2a44;
+  --color-text-muted: #8a94a8;
+  min-height: 100dvh;
+  background: var(--color-bg);
+  display: flex;
+  justify-content: center;
+  overflow-x: hidden;
+}
+
+.tuijian-scale-frame {
+  position: relative;
+  overflow: hidden;
+}
+
+.tuijian-screen {
+  position: relative;
+  width: var(--ref-width);
+  height: var(--ref-height);
+  transform-origin: top center;
+  background: var(--color-bg);
+}
+
+.tuijian-screen img {
+  display: block;
+  max-width: none;
+}
+
+.tuijian-decor {
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  object-fit: contain;
+}
+
+.tuijian-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.tuijian-layer > * {
+  pointer-events: auto;
+}
+
+.tuijian-header {
+  position: absolute;
+  left: 22px;
+  top: 44px;
+  width: 896px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tuijian-logo {
+  width: 150px;
+  height: 42px;
+  flex: 0 0 auto;
+}
+
+.tuijian-search {
+  position: relative;
+  flex: 1;
+  height: 30px;
+  display: block;
+  cursor: text;
+}
+
+.tuijian-search img {
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+
+.tuijian-search-input {
+  position: absolute;
+  left: 36px;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  width: calc(100% - 48px);
+}
+
+.tuijian-header-schedule,
+.tuijian-header-avatar {
+  flex: 0 0 auto;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.tuijian-header-schedule {
+  width: 66px;
+  height: 38px;
+}
+
+.tuijian-header-avatar {
+  width: 70px;
+  height: 52px;
+}
+
+.tuijian-hero {
+  position: absolute;
+  left: 12px;
+  top: 96px;
+  width: 917px;
+  height: 236px;
+}
+
+.tuijian-hero-bg {
+  width: 100%;
+  height: 100%;
+  border-radius: 20px;
+  object-fit: cover;
+}
+
+.tuijian-hero-robot {
+  position: absolute;
+  right: 6px;
+  top: 14px;
+  width: 392px;
+  height: 210px;
+}
+
+.tuijian-hero-copy {
+  position: absolute;
+  left: 28px;
+  top: 34px;
+  width: 480px;
+  color: #fff;
+  z-index: 2;
+}
+
+.tuijian-hero-kicker {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.92;
+}
+
+.tuijian-hero-title {
+  margin: 8px 0 0;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.5px;
+}
+
+.tuijian-hero-sub {
+  margin: 8px 0 0;
+  font-size: 12px;
+  opacity: 0.95;
+}
+
+.tuijian-hero-cta {
+  margin-top: 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  color: #4f7cff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tuijian-hero-cta strong {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #4f7cff;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tuijian-nav-tabs {
+  position: absolute;
+  left: 8px;
+  top: 338px;
+  width: 925px;
+  height: 84px;
+}
+
+.tuijian-nav-tabs img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.tuijian-card {
+  position: absolute;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.tuijian-card > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.tuijian-card--inspiration {
+  left: 16px;
+  top: 428px;
+  width: 446px;
+  height: 240px;
+}
+
+.tuijian-card--ai-recommend {
+  left: 472px;
+  top: 428px;
+  width: 453px;
+  height: 290px;
+}
+
+.tuijian-card--open-day {
+  left: 16px;
+  top: 676px;
+  width: 446px;
+  height: 252px;
+}
+
+.tuijian-card--trending {
+  left: 472px;
+  top: 726px;
+  width: 453px;
+  height: 242px;
+}
+
+.tuijian-card--assistant {
+  left: 16px;
+  top: 936px;
+  width: 446px;
+  height: 272px;
+}
+
+.tuijian-card--rankings {
+  left: 472px;
+  top: 976px;
+  width: 453px;
+  height: 262px;
+}
+
+.tuijian-card--parent-guide {
+  left: 16px;
+  top: 1216px;
+  width: 446px;
+  height: 262px;
+}
+
+.tuijian-card--mood {
+  left: 472px;
+  top: 1246px;
+  width: 453px;
+  height: 232px;
+}
+
+.tuijian-card--travel {
+  left: 244px;
+  top: 1488px;
+  width: 454px;
+  height: 70px;
+}
+
+.tuijian-tab-bar {
+  position: absolute;
+  left: 0;
+  top: 1550px;
+  width: 941px;
+  height: 122px;
+}
+
+.tuijian-tab-bar-bg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.tuijian-tab-actions {
+  position: absolute;
+  inset: 18px 0 8px;
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-end;
+  padding: 0 12px;
+}
+
+.tuijian-tab-btn {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  min-width: 56px;
+}
+
+.tuijian-tab-btn.is-active {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.tuijian-tab-btn--ai {
+  transform: translateY(-18px);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.tuijian-tab-ai-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #7eb0ff 0%, #4f7cff 100%);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 11px;
+  box-shadow: 0 8px 18px rgba(79, 124, 255, 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tuijian-hero-cta,
+  .tuijian-card,
+  .tuijian-tab-btn {
+    transition-duration: 0.01ms !important;
+  }
+}

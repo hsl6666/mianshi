@@ -12,6 +12,7 @@ export default function LandingPage() {
           message
         </Button>
         <Button type="primary" onClick={() => {window.open(`${window.location.origin}/backend/landing`)}} >open 到空白布局打开</Button>
+        <Button onClick={() => window.open(`${window.location.origin}/tuijian`)}>打开推荐页 /tuijian</Button>
       </Flex>
       {/* <div className="h-screen" /> */}
     </>

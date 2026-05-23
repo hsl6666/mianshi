@@ -2,9 +2,11 @@ import { createBrowserRouter, Navigate, type RouteObject } from "react-router-do
 import { ProgressBar } from "@/components/ProgressBar";
 import { echartsDemoRoute } from "./echarts-demo";
 import { landingRoute } from "./landing";
+import { tuijianRoute } from "./tuijian";
 import { ROUTE_PATHS } from "@/constants/common";
 
 const routes: RouteObject[] = [
+  tuijianRoute,
   {
     path: "/",
     lazy: async () => ({

@@ -1,0 +1,13 @@
+{
+  "sourceReference": "/Users/xiaolinzi/Downloads/首页-推荐.png",
+  "referenceCanvas": { "width": 941, "height": 1672 },
+  "targetViewport": { "width": 941 },
+  "assets": {
+    "logo": { "file": "/assets/reference-style/tuijian/logo.png", "sourceBox": [22, 44, 172, 86] },
+    "search-bar": { "file": "/assets/reference-style/tuijian/search-bar.png", "sourceBox": [178, 50, 632, 80] },
+    "hero-banner": { "file": "/assets/reference-style/tuijian/hero-banner.png", "sourceBox": [12, 96, 929, 332] },
+    "hero-robot": { "file": "/assets/reference-style/tuijian/hero-robot.png", "sourceBox": [520, 110, 912, 320], "role": "decorative" },
+    "nav-tabs": { "file": "/assets/reference-style/tuijian/nav-tabs.png", "sourceBox": [8, 338, 933, 422] },
+    "tab-bar": { "file": "/assets/reference-style/tuijian/tab-bar.png", "sourceBox": [0, 1550, 941, 1672] }
+  }
+}
