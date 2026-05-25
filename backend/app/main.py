@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import bidding_project_groups, bidding_projects, health
+from app.api import auth, bidding_project_groups, bidding_projects, health, operation_logs, users
 from app.core.config import get_settings
 from app.db import init_db
 
@@ -18,6 +18,9 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(operation_logs.router)
 app.include_router(bidding_project_groups.router)
 app.include_router(bidding_projects.router)
 

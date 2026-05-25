@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/app.db"
     frontend_origin: str = "http://127.0.0.1:5173"
     uploads_dir: Path = Path("./data/uploads")
+    jwt_secret: str = "quanzhan-dev-jwt-secret-change-in-production"
+    jwt_access_expire_hours: int = 12
+    jwt_refresh_expire_hours: int = 168
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

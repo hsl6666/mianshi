@@ -43,7 +43,7 @@ function buildProjectFormData(values: ProjectFormValues): FormData {
   formData.append("participating_units", (values.participating_units || "").trim());
   formData.append("bid_opening_at", dayjs(values.bid_opening_at).format("YYYY-MM-DDTHH:mm:ss"));
 
-  if (values.group_mode === "existing" && values.group_id) {
+  if (values.group_id) {
     formData.append("group_id", String(values.group_id));
   } else if (values.group_name) {
     formData.append("group_name", values.group_name.trim());

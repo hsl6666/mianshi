@@ -19,11 +19,13 @@ def sync_project_status(project: BiddingProject, now: datetime | None = None) ->
         project.status = ProjectStatus.registered
 
 
-def refresh_project_statuses(db: Session) -> None:
+def refresh_project_statuses(db: Session, owner: str | None) -> None:
     now = datetime.now()
+    query = select(BiddingProject).join(BiddingProjectGroup).where(BiddingProject.bid_opening_at <= now)
+    if owner:
+        query = query.where(BiddingProjectGroup.owner == owner)
     rows = db.scalars(
-        select(BiddingProject)
-        .where(BiddingProject.bid_opening_at <= now)
+        query
         .options(selectinload(BiddingProject.feedback))
     ).all()
     changed = False
@@ -38,14 +40,17 @@ def refresh_project_statuses(db: Session) -> None:
 
 def list_project_tree(
     db: Session,
+    owner: str | None,
     page: int,
     page_size: int,
     keyword: str | None,
     status: ProjectStatus | None = None,
 ) -> tuple[list[BiddingProjectGroup], int]:
-    refresh_project_statuses(db)
+    refresh_project_statuses(db, owner)
 
     group_filters = []
+    if owner:
+        group_filters.append(BiddingProjectGroup.owner == owner)
     project_filters = []
     if keyword:
         like = f"%{keyword.strip()}%"
@@ -56,21 +61,24 @@ def list_project_tree(
     if status is not None:
         project_filters.append(BiddingProject.status == status)
 
-    if project_filters and not group_filters:
-        group_ids_stmt = select(BiddingProject.group_id).where(*project_filters).distinct()
+    if project_filters:
+        group_ids_query = select(BiddingProject.group_id).join(BiddingProjectGroup).where(*project_filters)
+        if owner:
+            group_ids_query = group_ids_query.where(BiddingProjectGroup.owner == owner)
+        group_ids_stmt = group_ids_query.distinct()
         group_filters.append(BiddingProjectGroup.id.in_(group_ids_stmt))
 
-    count_stmt = select(func.count(BiddingProjectGroup.id))
-    if group_filters:
-        count_stmt = count_stmt.where(*group_filters)
+    count_stmt = select(func.count(BiddingProjectGroup.id)).where(*group_filters)
     total = db.scalar(count_stmt) or 0
 
-    query = select(BiddingProjectGroup).options(
-        selectinload(BiddingProjectGroup.attachments),
-        selectinload(BiddingProjectGroup.projects).selectinload(BiddingProject.feedback),
+    query = (
+        select(BiddingProjectGroup)
+        .where(*group_filters)
+        .options(
+            selectinload(BiddingProjectGroup.attachments),
+            selectinload(BiddingProjectGroup.projects).selectinload(BiddingProject.feedback),
+        )
     )
-    if group_filters:
-        query = query.where(*group_filters)
 
     groups = (
         db.scalars(
@@ -90,15 +98,19 @@ def list_project_tree(
     return groups, total
 
 
-def get_project(db: Session, project_id: int) -> BiddingProject | None:
-    project = db.scalar(
+def get_project(db: Session, project_id: int, owner: str | None = None) -> BiddingProject | None:
+    query = (
         select(BiddingProject)
+        .join(BiddingProjectGroup)
         .where(BiddingProject.id == project_id)
         .options(
             selectinload(BiddingProject.group).selectinload(BiddingProjectGroup.attachments),
             selectinload(BiddingProject.feedback),
         )
     )
+    if owner is not None:
+        query = query.where(BiddingProjectGroup.owner == owner)
+    project = db.scalar(query)
     if project:
         sync_project_status(project)
         db.commit()

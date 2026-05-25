@@ -21,10 +21,48 @@ class AttachmentType(str, enum.Enum):
     bid_doc = "bid_doc"
 
 
+class UserRole(str, enum.Enum):
+    super_admin = "super_admin"
+    user = "user"
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.user, nullable=False)
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    display_name: Mapped[Optional[str]] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class OperationLog(Base):
+    __tablename__ = "operation_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    module: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    resource_type: Mapped[Optional[str]] = mapped_column(String(64))
+    resource_id: Mapped[Optional[int]] = mapped_column(Integer)
+    summary: Mapped[str] = mapped_column(String(500), nullable=False)
+    detail: Mapped[Optional[str]] = mapped_column(Text)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), index=True)
+
+
 class BiddingProjectGroup(Base):
     __tablename__ = "bidding_project_groups"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    owner: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     bid_opening_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())

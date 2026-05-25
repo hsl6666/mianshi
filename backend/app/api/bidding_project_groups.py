@@ -1,18 +1,25 @@
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_client_ip, get_current_user
 from app.core.config import get_settings
+from app.core.security import CurrentUser
 from app.db import get_db
 from app.models import AttachmentType
 from app.schemas import GroupCreate, GroupDetail, GroupListItem, GroupUpdate
 from app.services import bidding_project_groups as group_service
+from app.services import operation_logs as log_service
 from app.services.files import save_upload
 
-router = APIRouter(prefix="/api/bidding-project-groups", tags=["bidding-project-groups"])
+router = APIRouter(
+    prefix="/api/bidding-project-groups",
+    tags=["bidding-project-groups"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 def _to_list_item(group) -> GroupListItem:
@@ -31,14 +38,19 @@ def _to_list_item(group) -> GroupListItem:
 def list_groups(
     keyword: Optional[str] = None,
     db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> list[GroupListItem]:
-    rows = group_service.list_groups(db, keyword)
+    rows = group_service.list_groups(db, current_user.owner_filter, keyword)
     return [_to_list_item(row) for row in rows]
 
 
 @router.get("/{group_id}", response_model=GroupDetail)
-def get_group(group_id: int, db: Session = Depends(get_db)) -> GroupDetail:
-    group = group_service.get_group(db, group_id)
+def get_group(
+    group_id: int,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> GroupDetail:
+    group = group_service.get_group(db, group_id, current_user.owner_filter)
     if not group:
         raise HTTPException(status_code=404, detail="项目组不存在")
     return GroupDetail.model_validate(group)
@@ -46,11 +58,13 @@ def get_group(group_id: int, db: Session = Depends(get_db)) -> GroupDetail:
 
 @router.post("", response_model=GroupDetail, status_code=201)
 async def create_group(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
     name: str = Form(...),
     bid_opening_at: Optional[datetime] = Form(None),
     tender_doc: Optional[UploadFile] = File(None),
     bid_doc: Optional[UploadFile] = File(None),
-    db: Session = Depends(get_db),
 ) -> GroupDetail:
     resolved_opening_at = bid_opening_at or datetime.now()
     try:
@@ -60,10 +74,11 @@ async def create_group(
 
     group = group_service.create_group(
         db,
+        owner=current_user.username,
         name=payload.name,
         bid_opening_at=payload.bid_opening_at,
     )
-    group = group_service.get_group(db, group.id)
+    group = group_service.get_group(db, group.id, current_user.owner_filter)
     assert group is not None
 
     for upload, attachment_type in ((tender_doc, AttachmentType.tender_doc), (bid_doc, AttachmentType.bid_doc)):
@@ -81,19 +96,31 @@ async def create_group(
                 size_bytes=size_bytes,
                 content_type=content_type,
             )
-            group = group_service.get_group(db, group.id)
+            group = group_service.get_group(db, group.id, current_user.owner_filter)
             assert group is not None
 
+    log_service.record_log(
+        db,
+        username=current_user.username,
+        action="create",
+        module="bidding",
+        resource_type="group",
+        resource_id=group.id,
+        summary=f"创建项目组 {group.name}",
+        ip_address=get_client_ip(request),
+    )
     return GroupDetail.model_validate(group)
 
 
 @router.patch("/{group_id}", response_model=GroupDetail)
 def update_group(
     group_id: int,
-    name: str = Form(...),
+    request: Request,
     db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+    name: str = Form(...),
 ) -> GroupDetail:
-    group = group_service.get_group(db, group_id)
+    group = group_service.get_group(db, group_id, current_user.owner_filter)
     if not group:
         raise HTTPException(status_code=404, detail="项目组不存在")
     try:
@@ -102,8 +129,18 @@ def update_group(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     group_service.update_group(db, group, name=payload.name)
-    group = group_service.get_group(db, group_id)
+    group = group_service.get_group(db, group_id, current_user.owner_filter)
     assert group is not None
+    log_service.record_log(
+        db,
+        username=current_user.username,
+        action="update",
+        module="bidding",
+        resource_type="group",
+        resource_id=group.id,
+        summary=f"更新项目组 {group.name}",
+        ip_address=get_client_ip(request),
+    )
     return GroupDetail.model_validate(group)
 
 
@@ -112,8 +149,9 @@ def download_group_attachment(
     group_id: int,
     attachment_id: int,
     db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> FileResponse:
-    group = group_service.get_group(db, group_id)
+    group = group_service.get_group(db, group_id, current_user.owner_filter)
     if not group:
         raise HTTPException(status_code=404, detail="项目组不存在")
     attachment = next((a for a in group.attachments if a.id == attachment_id), None)

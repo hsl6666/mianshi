@@ -3,7 +3,7 @@ from typing import List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
-from app.models import AttachmentType, ProjectStatus
+from app.models import AttachmentType, ProjectStatus, UserRole
 
 
 class AttachmentOut(BaseModel):
@@ -133,6 +133,78 @@ class FeedbackCreate(BaseModel):
 
 class PaginatedProjectTree(BaseModel):
     items: List[GroupTreeItem]
+    total: int
+    page: int
+    page_size: int
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    username: str
+    role: UserRole
+    display_name: Optional[str] = None
+
+
+class CurrentUserOut(BaseModel):
+    username: str
+    role: UserRole
+    display_name: Optional[str] = None
+    is_super_admin: bool = False
+
+    model_config = {"from_attributes": True}
+
+
+class UserOut(BaseModel):
+    id: int
+    username: str
+    role: UserRole
+    is_active: bool
+    display_name: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class UserCreate(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=6, max_length=128)
+    role: UserRole = UserRole.user
+    display_name: Optional[str] = Field(default=None, max_length=64)
+    is_active: bool = True
+
+
+class UserUpdate(BaseModel):
+    password: Optional[str] = Field(default=None, min_length=6, max_length=128)
+    role: Optional[UserRole] = None
+    display_name: Optional[str] = Field(default=None, max_length=64)
+    is_active: Optional[bool] = None
+
+
+class OperationLogOut(BaseModel):
+    id: int
+    username: str
+    action: str
+    module: str
+    resource_type: Optional[str] = None
+    resource_id: Optional[int] = None
+    summary: str
+    detail: Optional[str] = None
+    ip_address: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PaginatedOperationLogs(BaseModel):
+    items: List[OperationLogOut]
     total: int
     page: int
     page_size: int

@@ -126,8 +126,50 @@ def _migrate_legacy_projects() -> None:
             )
 
 
+def _migrate_owner_column() -> None:
+    """为项目组增加所属用户，历史数据默认归属 cqzsxh，并清空 zcs 的数据。"""
+    inspector = inspect(engine)
+    if "bidding_project_groups" not in inspector.get_table_names():
+        return
+
+    columns = {col["name"] for col in inspector.get_columns("bidding_project_groups")}
+    if "owner" not in columns:
+        with engine.begin() as conn:
+            conn.execute(
+                text("ALTER TABLE bidding_project_groups ADD COLUMN owner VARCHAR(64) DEFAULT 'cqzsxh'")
+            )
+            conn.execute(text("UPDATE bidding_project_groups SET owner = 'cqzsxh' WHERE owner IS NULL"))
+
+    settings = get_settings()
+    with engine.begin() as conn:
+        zcs_groups = conn.execute(
+            text("SELECT id FROM bidding_project_groups WHERE owner = 'zcs'")
+        ).fetchall()
+        if zcs_groups:
+            attachments = conn.execute(
+                text(
+                    "SELECT stored_name FROM group_attachments "
+                    "WHERE group_id IN (SELECT id FROM bidding_project_groups WHERE owner = 'zcs')"
+                )
+            ).fetchall()
+            for (stored_name,) in attachments:
+                file_path = settings.uploads_dir / stored_name
+                if file_path.exists():
+                    file_path.unlink()
+            conn.execute(text("DELETE FROM bidding_project_groups WHERE owner = 'zcs'"))
+
+
+def _seed_users() -> None:
+    from app.services import users as user_service
+
+    with SessionLocal() as db:
+        user_service.seed_default_users(db)
+
+
 def init_db() -> None:
     from app import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     _migrate_legacy_projects()
+    _migrate_owner_column()
+    _seed_users()

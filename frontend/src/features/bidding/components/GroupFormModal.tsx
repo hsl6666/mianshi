@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { Form, Input, Modal } from "antd";
 import { useResponsiveOverlay } from "@/hooks/useResponsiveOverlay";
 import type { GroupFormValues } from "../types";
@@ -27,10 +26,9 @@ export default function GroupFormModal({
   const [form] = Form.useForm<FormFields>();
   const { isMobile, modalProps } = useResponsiveOverlay();
 
-  useEffect(() => {
-    if (!open) return;
+  const fillForm = () => {
     form.setFieldsValue({ name: groupName ?? "" });
-  }, [open, groupName, form]);
+  };
 
   const handleOk = async () => {
     const values = await form.validateFields();
@@ -48,9 +46,18 @@ export default function GroupFormModal({
       width={isMobile ? undefined : 480}
       destroyOnClose
       okText="保存"
+      afterOpenChange={(visible) => {
+        if (visible) fillForm();
+      }}
       {...modalProps}
     >
-      <Form form={form} layout="vertical" preserve={false}>
+      <Form
+        form={form}
+        layout="vertical"
+        preserve={false}
+        key={groupId ? `group-${groupId}` : "group-new"}
+        initialValues={{ name: groupName ?? "" }}
+      >
         <Form.Item name="name" label="分组名称" rules={[{ required: true, message: "请输入分组名称" }]}>
           <Input placeholder="例如：5月27号开标" maxLength={200} showCount />
         </Form.Item>

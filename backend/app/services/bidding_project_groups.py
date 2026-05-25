@@ -2,17 +2,23 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import get_settings
 from app.models import AttachmentType, BiddingProjectGroup, GroupAttachment
 
 
-def list_groups(db: Session, keyword: str | None = None) -> list[BiddingProjectGroup]:
-    query = select(BiddingProjectGroup).options(
-        selectinload(BiddingProjectGroup.attachments),
-        selectinload(BiddingProjectGroup.projects),
+def list_groups(db: Session, owner: str | None, keyword: str | None = None) -> list[BiddingProjectGroup]:
+    query = select(BiddingProjectGroup)
+    if owner:
+        query = query.where(BiddingProjectGroup.owner == owner)
+    query = (
+        query
+        .options(
+            selectinload(BiddingProjectGroup.attachments),
+            selectinload(BiddingProjectGroup.projects),
+        )
     )
     if keyword:
         like = f"%{keyword.strip()}%"
@@ -24,21 +30,26 @@ def list_groups(db: Session, keyword: str | None = None) -> list[BiddingProjectG
     )
 
 
-def get_group(db: Session, group_id: int) -> BiddingProjectGroup | None:
-    return db.scalar(
+def get_group(db: Session, group_id: int, owner: str | None = None) -> BiddingProjectGroup | None:
+    query = (
         select(BiddingProjectGroup)
         .where(BiddingProjectGroup.id == group_id)
         .options(selectinload(BiddingProjectGroup.attachments))
     )
+    if owner is not None:
+        query = query.where(BiddingProjectGroup.owner == owner)
+    return db.scalar(query)
 
 
 def create_group(
     db: Session,
     *,
+    owner: str,
     name: str,
     bid_opening_at: datetime,
 ) -> BiddingProjectGroup:
     group = BiddingProjectGroup(
+        owner=owner,
         name=name.strip(),
         bid_opening_at=bid_opening_at,
     )

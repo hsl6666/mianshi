@@ -1,11 +1,20 @@
 import { useEffect } from "react";
-import { Flex, Layout, Typography } from "antd";
+import { Layout, Typography } from "antd";
+import { FileTextOutlined } from "@ant-design/icons";
 import { AppHelmet } from "@/components/Helmet";
 import { ThemeSwitch } from "@/components/ThemeSwitch";
+import { useAuthStore } from "@/store/authStore";
+import AppSidebar from "./components/app-sidebar";
 import Content from "./components/main-content";
 import UserAvatar from "./components/user-avatar";
 
 export default function MainLayout() {
+  const hydrateProfile = useAuthStore((s) => s.hydrateProfile);
+
+  useEffect(() => {
+    hydrateProfile();
+  }, [hydrateProfile]);
+
   useEffect(() => {
     const handleScroll = () => {
       const scrollTop = document.scrollingElement?.scrollTop || document.body.scrollTop;
@@ -23,19 +32,36 @@ export default function MainLayout() {
     <>
       <AppHelmet />
       <Layout className="min-h-screen">
+        <Layout.Sider
+          width={200}
+          breakpoint="lg"
+          collapsedWidth={0}
+          className="hidden md:block bg-white dark:bg-[#001529]"
+        >
+          <div className="h-14 md:h-16 flex items-center px-4 gap-2 border-b border-gray-100 dark:border-gray-800">
+            <FileTextOutlined className="text-blue-500" />
+            <Typography.Text strong className="text-sm">
+              招投标系统
+            </Typography.Text>
+          </div>
+          <AppSidebar />
+        </Layout.Sider>
         <Layout>
           <Layout.Header
             id="app-header-bar"
             className="flex items-center sticky top-0 z-[999] px-3 md:px-4 bg-white dark:bg-[#001529] h-14 md:h-16"
           >
-            <Typography.Text strong className="text-base md:text-lg">
+            <Typography.Text strong className="text-base md:text-lg md:hidden">
               招投标项目管理
             </Typography.Text>
-            <Flex gap={8} className="ml-auto items-center shrink-0">
+            <div className="ml-auto flex items-center gap-2 shrink-0">
               <ThemeSwitch />
               <UserAvatar />
-            </Flex>
+            </div>
           </Layout.Header>
+          <div className="md:hidden border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-[#001529] overflow-x-auto">
+            <AppSidebar />
+          </div>
           <Content />
         </Layout>
       </Layout>

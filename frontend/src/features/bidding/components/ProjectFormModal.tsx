@@ -60,32 +60,23 @@ export default function ProjectFormModal({
       .finally(() => setGroupsLoading(false));
   }, [open, isEdit]);
 
-  useEffect(() => {
-    if (!open) return;
+  const fillForm = () => {
     if (project) {
       form.setFieldsValue({
         name: project.name,
         participating_units: project.participating_units,
         bid_opening_at: dayjs(project.bid_opening_at),
       });
-    } else {
-      form.resetFields();
-      const presetGroup = presetGroupId ? groups.find((g) => g.id === presetGroupId) : undefined;
-      form.setFieldsValue({
-        group_mode: presetGroupId ? "existing" : "new",
-        group_id: presetGroupId ?? undefined,
-        bid_opening_at: presetGroup ? dayjs(presetGroup.bid_opening_at) : dayjs(),
-        tender_doc: [],
-        bid_doc: [],
-      });
+      return;
     }
-  }, [open, project, form, presetGroupId, groups]);
-
-  const handleGroupChange = (groupId: number) => {
-    const selected = groups.find((g) => g.id === groupId);
-    if (selected) {
-      form.setFieldValue("bid_opening_at", dayjs(selected.bid_opening_at));
-    }
+    form.resetFields();
+    form.setFieldsValue({
+      group_mode: presetGroupId ? "existing" : "new",
+      group_id: presetGroupId ?? undefined,
+      bid_opening_at: undefined,
+      tender_doc: [],
+      bid_doc: [],
+    });
   };
 
   const handleOk = async () => {
@@ -103,7 +94,14 @@ export default function ProjectFormModal({
       return;
     }
 
-    if (!isEdit && values.group_mode === "existing" && !values.group_id) {
+    const resolvedGroupId = values.group_id ?? presetGroupId ?? undefined;
+    const resolvedGroupMode: FormFields["group_mode"] = isEdit
+      ? "existing"
+      : presetGroupId
+        ? "existing"
+        : values.group_mode ?? "new";
+
+    if (!isEdit && resolvedGroupMode === "existing" && !resolvedGroupId) {
       message.warning("请选择项目组");
       return;
     }
@@ -127,8 +125,8 @@ export default function ProjectFormModal({
     }
 
     await onSubmit({
-      group_mode: isEdit ? "existing" : values.group_mode,
-      group_id: values.group_id ?? presetGroupId ?? undefined,
+      group_mode: resolvedGroupMode,
+      group_id: resolvedGroupId,
       group_name: values.group_name,
       name: values.name.trim(),
       participating_units: values.participating_units.trim(),
@@ -156,6 +154,11 @@ export default function ProjectFormModal({
       width={isMobile ? undefined : 720}
       destroyOnClose
       okText="保存"
+      afterOpenChange={(visible) => {
+        if (visible) {
+          requestAnimationFrame(() => fillForm());
+        }
+      }}
       {...modalProps}
     >
       <p className="text-gray-500 mb-4 text-sm">
@@ -165,7 +168,28 @@ export default function ProjectFormModal({
             ? "选择已有项目组后，填写项目信息并上传招标文件、投标文件。"
             : "仅需填写分组名称，保存后可在项目组下点击「添加项目」登记具体项目。"}
       </p>
-      <Form form={form} layout="vertical" preserve={false}>
+      <Form
+        form={form}
+        layout="vertical"
+        preserve={false}
+        key={
+          project ? `project-${project.id}` : presetGroupId ? `preset-${presetGroupId}` : "project-new"
+        }
+        initialValues={
+          project
+            ? {
+                name: project.name,
+                participating_units: project.participating_units,
+                bid_opening_at: dayjs(project.bid_opening_at),
+              }
+            : {
+                group_mode: presetGroupId ? "existing" : "new",
+                group_id: presetGroupId ?? undefined,
+                tender_doc: [],
+                bid_doc: [],
+              }
+        }
+      >
         {isGroupOnly && (
           <>
             <Form.Item name="group_mode" label="项目组" initialValue="new">
@@ -194,7 +218,6 @@ export default function ProjectFormModal({
                   loading={groupsLoading}
                   showSearch
                   optionFilterProp="label"
-                  onChange={handleGroupChange}
                   options={groups.map((g) => ({
                     value: g.id,
                     label: `${g.name}（${dayjs(g.bid_opening_at).format("YYYY-MM-DD HH:mm")}，${g.project_count} 个项目）`,
@@ -206,10 +229,18 @@ export default function ProjectFormModal({
         )}
 
         {!isEdit && presetGroupId && (
-          <div className="mb-4 flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-700">
-            <FolderOutlined />
-            <span>将添加到已有项目组</span>
-          </div>
+          <>
+            <Form.Item name="group_mode" hidden initialValue="existing">
+              <Input />
+            </Form.Item>
+            <Form.Item name="group_id" hidden initialValue={presetGroupId}>
+              <Input />
+            </Form.Item>
+            <div className="mb-4 flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-700">
+              <FolderOutlined />
+              <span>将添加到已有项目组</span>
+            </div>
+          </>
         )}
 
         {isEdit && project && (
@@ -240,6 +271,7 @@ export default function ProjectFormModal({
                 showTime
                 className="w-full"
                 format="YYYY-MM-DD HH:mm"
+                placeholder="请选择开标时间"
                 defaultPickerValue={dayjs()}
               />
             </Form.Item>

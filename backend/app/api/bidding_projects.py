@@ -1,9 +1,11 @@
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_client_ip, get_current_user
+from app.core.security import CurrentUser
 from app.db import get_db
 from app.models import AttachmentType, BiddingProject, ProjectStatus
 from app.schemas import (
@@ -18,9 +20,14 @@ from app.schemas import (
 )
 from app.services import bidding_project_groups as group_service
 from app.services import bidding_projects as service
+from app.services import operation_logs as log_service
 from app.services.files import save_upload
 
-router = APIRouter(prefix="/api/bidding-projects", tags=["bidding-projects"])
+router = APIRouter(
+    prefix="/api/bidding-projects",
+    tags=["bidding-projects"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 def _to_project_item(project: BiddingProject) -> ProjectListItem:
@@ -74,10 +81,13 @@ def list_bidding_projects(
     keyword: Optional[str] = None,
     status: Optional[ProjectStatus] = None,
     db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> PaginatedProjectTree:
     page = max(page, 1)
     page_size = min(max(page_size, 1), 50)
-    rows, total = service.list_project_tree(db, page, page_size, keyword, status)
+    rows, total = service.list_project_tree(
+        db, current_user.owner_filter, page, page_size, keyword, status
+    )
     return PaginatedProjectTree(
         items=[_to_group_tree_item(row) for row in rows],
         total=total,
@@ -87,8 +97,12 @@ def list_bidding_projects(
 
 
 @router.get("/{project_id}", response_model=ProjectDetail)
-def get_bidding_project(project_id: int, db: Session = Depends(get_db)) -> ProjectDetail:
-    project = service.get_project(db, project_id)
+def get_bidding_project(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> ProjectDetail:
+    project = service.get_project(db, project_id, current_user.owner_filter)
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
     return _to_detail(project)
@@ -96,6 +110,9 @@ def get_bidding_project(project_id: int, db: Session = Depends(get_db)) -> Proje
 
 @router.post("", response_model=ProjectDetail, status_code=201)
 async def create_bidding_project(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
     name: str = Form(...),
     participating_units: str = Form(...),
     bid_opening_at: datetime = Form(...),
@@ -104,7 +121,6 @@ async def create_bidding_project(
     group_bid_opening_at: Optional[datetime] = Form(None),
     tender_doc: Optional[UploadFile] = File(None),
     bid_doc: Optional[UploadFile] = File(None),
-    db: Session = Depends(get_db),
 ) -> ProjectDetail:
     try:
         payload = ProjectCreate(
@@ -119,7 +135,7 @@ async def create_bidding_project(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     if payload.group_id:
-        group = group_service.get_group(db, payload.group_id)
+        group = group_service.get_group(db, payload.group_id, current_user.owner_filter)
         if not group:
             raise HTTPException(status_code=404, detail="所选项目组不存在")
         if not tender_doc or not tender_doc.filename:
@@ -150,10 +166,11 @@ async def create_bidding_project(
 
         group = group_service.create_group(
             db,
+            owner=current_user.username,
             name=payload.group_name,
             bid_opening_at=payload.bid_opening_at,
         )
-        group = group_service.get_group(db, group.id)
+        group = group_service.get_group(db, group.id, current_user.owner_filter)
         assert group is not None
 
         for upload, attachment_type in (
@@ -183,20 +200,32 @@ async def create_bidding_project(
         participating_units=payload.participating_units,
         bid_opening_at=payload.bid_opening_at,
     )
-    project = service.get_project(db, project.id)
+    project = service.get_project(db, project.id, current_user.owner_filter)
     assert project is not None
+    log_service.record_log(
+        db,
+        username=current_user.username,
+        action="create",
+        module="bidding",
+        resource_type="project",
+        resource_id=project.id,
+        summary=f"创建项目 {project.name}",
+        ip_address=get_client_ip(request),
+    )
     return _to_detail(project)
 
 
 @router.patch("/{project_id}", response_model=ProjectDetail)
 async def update_bidding_project(
     project_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
     name: Optional[str] = Form(None),
     participating_units: Optional[str] = Form(None),
     bid_opening_at: Optional[datetime] = Form(None),
-    db: Session = Depends(get_db),
 ) -> ProjectDetail:
-    project = service.get_project(db, project_id)
+    project = service.get_project(db, project_id, current_user.owner_filter)
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
     try:
@@ -215,8 +244,18 @@ async def update_bidding_project(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    project = service.get_project(db, project_id)
+    project = service.get_project(db, project_id, current_user.owner_filter)
     assert project is not None
+    log_service.record_log(
+        db,
+        username=current_user.username,
+        action="update",
+        module="bidding",
+        resource_type="project",
+        resource_id=project.id,
+        summary=f"更新项目 {project.name}",
+        ip_address=get_client_ip(request),
+    )
     return _to_detail(project)
 
 
@@ -224,9 +263,11 @@ async def update_bidding_project(
 def submit_project_feedback(
     project_id: int,
     payload: FeedbackCreate,
+    request: Request,
     db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> FeedbackOut:
-    project = service.get_project(db, project_id)
+    project = service.get_project(db, project_id, current_user.owner_filter)
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
     try:
@@ -240,12 +281,38 @@ def submit_project_feedback(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    log_service.record_log(
+        db,
+        username=current_user.username,
+        action="feedback",
+        module="bidding",
+        resource_type="project",
+        resource_id=project.id,
+        summary=f"提交项目 {project.name} 评审反馈",
+        ip_address=get_client_ip(request),
+    )
     return FeedbackOut.model_validate(feedback)
 
 
 @router.delete("/{project_id}", status_code=204)
-def delete_bidding_project(project_id: int, db: Session = Depends(get_db)) -> None:
-    project = service.get_project(db, project_id)
+def delete_bidding_project(
+    project_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> None:
+    project = service.get_project(db, project_id, current_user.owner_filter)
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
+    name = project.name
     service.delete_project(db, project)
+    log_service.record_log(
+        db,
+        username=current_user.username,
+        action="delete",
+        module="bidding",
+        resource_type="project",
+        resource_id=project_id,
+        summary=f"删除项目 {name}",
+        ip_address=get_client_ip(request),
+    )

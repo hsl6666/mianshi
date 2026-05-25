@@ -3,6 +3,8 @@ import Cookies from "js-cookie";
 // Token存储的键名
 export const ACCESS_TOKEN_KEY = "access_token";
 export const REFRESH_TOKEN_KEY = "refresh_token";
+export const USERNAME_KEY = "username";
+export const USER_ROLE_KEY = "user_role";
 
 /**
  * 存储Token到Cookie
@@ -81,4 +83,28 @@ export const getRefreshToken = () => {
 export const clearAllTokens = () => {
   removeTokenCookie(ACCESS_TOKEN_KEY);
   removeTokenCookie(REFRESH_TOKEN_KEY);
+};
+
+export const setUsername = (username: string) => {
+  setTokenCookie(USERNAME_KEY, username, 7);
+};
+
+export const getUsername = (): string | null => {
+  return getTokenCookie(USERNAME_KEY) ?? null;
+};
+
+export const clearUsername = () => {
+  removeTokenCookie(USERNAME_KEY);
+};
+
+export const setUserRole = (role: string) => {
+  setTokenCookie(USER_ROLE_KEY, role, 7);
+};
+
+export const getUserRole = (): string | null => {
+  return getTokenCookie(USER_ROLE_KEY) ?? null;
+};
+
+export const clearUserRole = () => {
+  removeTokenCookie(USER_ROLE_KEY);
 };
