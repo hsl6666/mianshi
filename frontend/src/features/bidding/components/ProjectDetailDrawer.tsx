@@ -2,7 +2,7 @@ import { Descriptions, Drawer, Space, Tag, Typography } from "antd";
 import dayjs from "dayjs";
 import { useResponsiveOverlay } from "@/hooks/useResponsiveOverlay";
 import { ATTACHMENT_TYPE_MAP, PROJECT_STATUS_MAP } from "../constants";
-import { getAttachmentDownloadUrl } from "../api";
+import { getGroupAttachmentDownloadUrl } from "../api";
 import type { BiddingProjectDetail } from "../types";
 
 interface ProjectDetailDrawerProps {
@@ -27,6 +27,7 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
       {...drawerProps}
     >
       <Descriptions column={1} bordered size="small">
+        <Descriptions.Item label="所属项目组">{project.group_name}</Descriptions.Item>
         <Descriptions.Item label="项目名称">{project.name}</Descriptions.Item>
         <Descriptions.Item label="状态">
           <Tag color={statusMeta.color}>{statusMeta.label}</Tag>
@@ -35,7 +36,7 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
         <Descriptions.Item label="开标时间">
           {dayjs(project.bid_opening_at).format("YYYY-MM-DD HH:mm")}
         </Descriptions.Item>
-        <Descriptions.Item label="附件">
+        <Descriptions.Item label="项目组附件">
           <Space direction="vertical" size={4}>
             {project.attachments.length === 0 ? (
               <span className="text-gray-400">暂无附件</span>
@@ -43,7 +44,7 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
               project.attachments.map((file) => (
                 <a
                   key={file.id}
-                  href={getAttachmentDownloadUrl(project.id, file.id)}
+                  href={getGroupAttachmentDownloadUrl(project.group_id, file.id)}
                   target="_blank"
                   rel="noreferrer"
                 >

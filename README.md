@@ -8,7 +8,8 @@
 
 | 步骤 | 说明 | 字段/操作 |
 |------|------|-----------|
-| **第一步** | 登记项目 | 项目名称、参加单位、招标文件、投标文件、开标时间 |
+| **项目组** | 按开标时间维度建组 | 分组名称（如「5月27号开标」）、开标时间、招标文件、投标文件（组内共享） |
+| **第一步** | 在组下登记项目 | 项目名称、参加单位、开标时间 |
 | **第二步** | 评审反馈 | 开标后填写最终得分、排名、打分明细、备注 |
 
 项目状态自动流转：
@@ -32,8 +33,10 @@ frontend/
 
 ## API 概览
 
-- `GET /api/bidding-projects` — 分页列表（支持 keyword、status）
-- `POST /api/bidding-projects` — 新建项目（multipart 含文件）
+- `GET /api/bidding-project-groups` — 项目组列表（下拉选择）
+- `POST /api/bidding-project-groups` — 新建项目组（multipart 含文件）
+- `GET /api/bidding-projects` — 分页树形列表（按项目组分组，支持 keyword、status）
+- `POST /api/bidding-projects` — 新建项目（选择已有组或同时新建组+文件）
 - `GET /api/bidding-projects/{id}` — 项目详情
 - `PATCH /api/bidding-projects/{id}` — 更新项目
 - `POST /api/bidding-projects/{id}/feedback` — 提交/更新评审反馈

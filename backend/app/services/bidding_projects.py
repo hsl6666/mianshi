@@ -5,8 +5,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.config import get_settings
-from app.models import AttachmentType, BiddingProject, ProjectAttachment, ProjectFeedback, ProjectStatus
+from app.models import BiddingProject, BiddingProjectGroup, ProjectFeedback, ProjectStatus
 
 
 def sync_project_status(project: BiddingProject, now: datetime | None = None) -> None:
@@ -21,7 +20,6 @@ def sync_project_status(project: BiddingProject, now: datetime | None = None) ->
 
 
 def refresh_project_statuses(db: Session) -> None:
-    """将已到开标时间且未反馈的项目标记为待反馈。"""
     now = datetime.now()
     rows = db.scalars(
         select(BiddingProject)
@@ -38,46 +36,58 @@ def refresh_project_statuses(db: Session) -> None:
         db.commit()
 
 
-def list_projects(
+def list_project_tree(
     db: Session,
     page: int,
     page_size: int,
     keyword: str | None,
     status: ProjectStatus | None = None,
-) -> tuple[list[BiddingProject], int]:
+) -> tuple[list[BiddingProjectGroup], int]:
     refresh_project_statuses(db)
-    filters = []
+
+    group_filters = []
+    project_filters = []
     if keyword:
         like = f"%{keyword.strip()}%"
-        filters.append((BiddingProject.name.ilike(like)) | (BiddingProject.participating_units.ilike(like)))
+        group_filters.append(BiddingProjectGroup.name.ilike(like))
+        project_filters.append(
+            (BiddingProject.name.ilike(like)) | (BiddingProject.participating_units.ilike(like))
+        )
     if status is not None:
-        filters.append(BiddingProject.status == status)
+        project_filters.append(BiddingProject.status == status)
 
-    count_stmt = select(func.count(BiddingProject.id))
-    if filters:
-        count_stmt = count_stmt.where(*filters)
+    if project_filters and not group_filters:
+        group_ids_stmt = select(BiddingProject.group_id).where(*project_filters).distinct()
+        group_filters.append(BiddingProjectGroup.id.in_(group_ids_stmt))
+
+    count_stmt = select(func.count(BiddingProjectGroup.id))
+    if group_filters:
+        count_stmt = count_stmt.where(*group_filters)
     total = db.scalar(count_stmt) or 0
 
-    query = select(BiddingProject).options(
-        selectinload(BiddingProject.feedback),
-        selectinload(BiddingProject.attachments),
+    query = select(BiddingProjectGroup).options(
+        selectinload(BiddingProjectGroup.attachments),
+        selectinload(BiddingProjectGroup.projects).selectinload(BiddingProject.feedback),
     )
-    if filters:
-        query = query.where(*filters)
-    rows = (
+    if group_filters:
+        query = query.where(*group_filters)
+
+    groups = (
         db.scalars(
-            query.order_by(BiddingProject.bid_opening_at.desc(), BiddingProject.id.desc())
+            query.order_by(BiddingProjectGroup.bid_opening_at.desc(), BiddingProjectGroup.id.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
         .unique()
         .all()
     )
+
     now = datetime.now()
-    for project in rows:
-        sync_project_status(project, now)
+    for group in groups:
+        for project in group.projects:
+            sync_project_status(project, now)
     db.commit()
-    return rows, total
+    return groups, total
 
 
 def get_project(db: Session, project_id: int) -> BiddingProject | None:
@@ -85,7 +95,7 @@ def get_project(db: Session, project_id: int) -> BiddingProject | None:
         select(BiddingProject)
         .where(BiddingProject.id == project_id)
         .options(
-            selectinload(BiddingProject.attachments),
+            selectinload(BiddingProject.group).selectinload(BiddingProjectGroup.attachments),
             selectinload(BiddingProject.feedback),
         )
     )
@@ -98,11 +108,13 @@ def get_project(db: Session, project_id: int) -> BiddingProject | None:
 def create_project(
     db: Session,
     *,
+    group_id: int,
     name: str,
     participating_units: str,
     bid_opening_at: datetime,
 ) -> BiddingProject:
     project = BiddingProject(
+        group_id=group_id,
         name=name.strip(),
         participating_units=participating_units.strip(),
         bid_opening_at=bid_opening_at,
@@ -124,8 +136,6 @@ def update_project(
     participating_units: str | None = None,
     bid_opening_at: datetime | None = None,
 ) -> BiddingProject:
-    if project.feedback is not None:
-        raise ValueError("项目已完成评审反馈，无法修改基础信息")
     if name is not None:
         project.name = name.strip()
     if participating_units is not None:
@@ -136,38 +146,6 @@ def update_project(
     db.commit()
     db.refresh(project)
     return project
-
-
-def replace_attachment(
-    db: Session,
-    project: BiddingProject,
-    attachment_type: AttachmentType,
-    *,
-    original_name: str,
-    stored_name: str,
-    size_bytes: int,
-    content_type: str | None,
-) -> ProjectAttachment:
-    settings = get_settings()
-    existing = next((a for a in project.attachments if a.attachment_type == attachment_type), None)
-    if existing:
-        old_path = settings.uploads_dir / existing.stored_name
-        if old_path.exists():
-            old_path.unlink()
-        db.delete(existing)
-        db.flush()
-    attachment = ProjectAttachment(
-        project_id=project.id,
-        attachment_type=attachment_type,
-        original_name=original_name,
-        stored_name=stored_name,
-        size_bytes=size_bytes,
-        content_type=content_type,
-    )
-    db.add(attachment)
-    db.commit()
-    db.refresh(attachment)
-    return attachment
 
 
 def submit_feedback(

@@ -21,10 +21,56 @@ class AttachmentType(str, enum.Enum):
     bid_doc = "bid_doc"
 
 
+class BiddingProjectGroup(Base):
+    __tablename__ = "bidding_project_groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    bid_opening_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    attachments: Mapped[List["GroupAttachment"]] = relationship(
+        back_populates="group",
+        cascade="all, delete-orphan",
+    )
+    projects: Mapped[List["BiddingProject"]] = relationship(
+        back_populates="group",
+        cascade="all, delete-orphan",
+    )
+
+
+class GroupAttachment(Base):
+    __tablename__ = "group_attachments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("bidding_project_groups.id", ondelete="CASCADE"),
+        index=True,
+    )
+    attachment_type: Mapped[AttachmentType] = mapped_column(Enum(AttachmentType), nullable=False)
+    original_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    stored_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[Optional[str]] = mapped_column(String(128))
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
+
+    group: Mapped[BiddingProjectGroup] = relationship(back_populates="attachments")
+
+
 class BiddingProject(Base):
     __tablename__ = "bidding_projects"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("bidding_project_groups.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
     name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     participating_units: Mapped[str] = mapped_column(Text, nullable=False)
     bid_opening_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False)
@@ -40,30 +86,12 @@ class BiddingProject(Base):
         onupdate=func.now(),
     )
 
-    attachments: Mapped[List["ProjectAttachment"]] = relationship(
-        back_populates="project",
-        cascade="all, delete-orphan",
-    )
+    group: Mapped[BiddingProjectGroup] = relationship(back_populates="projects")
     feedback: Mapped[Optional["ProjectFeedback"]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
         uselist=False,
     )
-
-
-class ProjectAttachment(Base):
-    __tablename__ = "project_attachments"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("bidding_projects.id", ondelete="CASCADE"), index=True)
-    attachment_type: Mapped[AttachmentType] = mapped_column(Enum(AttachmentType), nullable=False)
-    original_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    stored_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    content_type: Mapped[Optional[str]] = mapped_column(String(128))
-    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
-
-    project: Mapped[BiddingProject] = relationship(back_populates="attachments")
 
 
 class ProjectFeedback(Base):
