@@ -76,7 +76,7 @@ export default function UserManagementPage() {
     form.setFieldsValue({
       username: record.username,
       role: record.role,
-      display_name: record.display_name,
+      display_name: record.display_name ?? undefined,
       is_active: record.is_active,
       password: undefined,
     });
