@@ -166,10 +166,36 @@ def _seed_users() -> None:
         user_service.seed_default_users(db)
 
 
+def _migrate_project_attachments_table() -> None:
+    """确保 project_attachments 表存在（用于项目独立附件）。"""
+    inspector = inspect(engine)
+    if "project_attachments" in inspector.get_table_names():
+        return
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS project_attachments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER NOT NULL,
+                    attachment_type VARCHAR(32) NOT NULL,
+                    original_name VARCHAR(255) NOT NULL,
+                    stored_name VARCHAR(255) NOT NULL,
+                    content_type VARCHAR(128),
+                    size_bytes INTEGER DEFAULT 0,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(project_id) REFERENCES bidding_projects(id) ON DELETE CASCADE
+                )
+                """
+            )
+        )
+
+
 def init_db() -> None:
     from app import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     _migrate_legacy_projects()
     _migrate_owner_column()
+    _migrate_project_attachments_table()
     _seed_users()

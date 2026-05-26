@@ -23,14 +23,14 @@ def validate_upload(file: UploadFile) -> None:
         raise ValueError(f"不支持的文件类型: {suffix or '未知'}")
 
 
-async def save_upload(file: UploadFile, group_id: int) -> tuple[str, str, int, str | None]:
+async def save_upload(file: UploadFile, owner_id: int, *, prefix: str = "group") -> tuple[str, str, int, str | None]:
     validate_upload(file)
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
         raise ValueError("文件大小不能超过 50MB")
 
     suffix = Path(file.filename or "file").suffix.lower()
-    stored_name = f"group_{group_id}_{uuid.uuid4().hex}{suffix}"
+    stored_name = f"{prefix}_{owner_id}_{uuid.uuid4().hex}{suffix}"
     target = ensure_upload_dir() / stored_name
     target.write_bytes(content)
     return stored_name, file.filename or stored_name, len(content), file.content_type

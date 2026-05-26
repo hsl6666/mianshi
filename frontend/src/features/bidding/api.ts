@@ -111,3 +111,50 @@ export function getGroupAttachmentDownloadUrl(groupId: number, attachmentId: num
   const base = import.meta.env.DEV ? "" : import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8010";
   return `${base}/api/bidding-project-groups/${groupId}/attachments/${attachmentId}/download`;
 }
+
+export async function downloadGroupAttachment(args: {
+  groupId: number;
+  attachmentId: number;
+  filename: string;
+}) {
+  const { groupId, attachmentId, filename } = args;
+  const url = `/api/bidding-project-groups/${groupId}/attachments/${attachmentId}/download`;
+
+  const response = await apiClient.get<Blob>(url, { responseType: "blob" });
+  const blob = response.data;
+  const contentType = blob?.type || "application/octet-stream";
+  const finalBlob = blob instanceof Blob ? new Blob([blob], { type: contentType }) : blob;
+
+  const objectUrl = URL.createObjectURL(finalBlob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // 让浏览器先开始接收/保存文件，避免立即回收导致偶发的下载失败
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 5000);
+}
+
+export async function downloadProjectAttachment(args: {
+  projectId: number;
+  attachmentId: number;
+  filename: string;
+}) {
+  const { projectId, attachmentId, filename } = args;
+  const url = `/api/bidding-projects/${projectId}/attachments/${attachmentId}/download`;
+
+  const response = await apiClient.get<Blob>(url, { responseType: "blob" });
+  const blob = response.data;
+  const contentType = blob?.type || "application/octet-stream";
+  const finalBlob = blob instanceof Blob ? new Blob([blob], { type: contentType }) : blob;
+
+  const objectUrl = URL.createObjectURL(finalBlob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 5000);
+}

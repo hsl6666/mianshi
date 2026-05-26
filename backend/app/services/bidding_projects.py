@@ -5,7 +5,8 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models import BiddingProject, BiddingProjectGroup, ProjectFeedback, ProjectStatus
+from app.core.config import get_settings
+from app.models import AttachmentType, BiddingProject, BiddingProjectGroup, ProjectAttachment, ProjectFeedback, ProjectStatus
 
 
 def sync_project_status(project: BiddingProject, now: datetime | None = None) -> None:
@@ -75,7 +76,7 @@ def list_project_tree(
         select(BiddingProjectGroup)
         .where(*group_filters)
         .options(
-            selectinload(BiddingProjectGroup.attachments),
+            selectinload(BiddingProjectGroup.projects).selectinload(BiddingProject.attachments),
             selectinload(BiddingProjectGroup.projects).selectinload(BiddingProject.feedback),
         )
     )
@@ -104,7 +105,8 @@ def get_project(db: Session, project_id: int, owner: str | None = None) -> Biddi
         .join(BiddingProjectGroup)
         .where(BiddingProject.id == project_id)
         .options(
-            selectinload(BiddingProject.group).selectinload(BiddingProjectGroup.attachments),
+            selectinload(BiddingProject.group),
+            selectinload(BiddingProject.attachments),
             selectinload(BiddingProject.feedback),
         )
     )
@@ -138,6 +140,39 @@ def create_project(
     db.commit()
     db.refresh(project)
     return project
+
+
+def replace_project_attachment(
+    db: Session,
+    project: BiddingProject,
+    attachment_type: AttachmentType,
+    *,
+    original_name: str,
+    stored_name: str,
+    size_bytes: int,
+    content_type: str | None,
+) -> ProjectAttachment:
+    settings = get_settings()
+    existing = next((a for a in project.attachments if a.attachment_type == attachment_type), None)
+    if existing:
+        old_path = settings.uploads_dir / existing.stored_name
+        if old_path.exists():
+            old_path.unlink()
+        db.delete(existing)
+        db.flush()
+
+    attachment = ProjectAttachment(
+        project_id=project.id,
+        attachment_type=attachment_type,
+        original_name=original_name,
+        stored_name=stored_name,
+        size_bytes=size_bytes,
+        content_type=content_type,
+    )
+    db.add(attachment)
+    db.commit()
+    db.refresh(attachment)
+    return attachment
 
 
 def update_project(

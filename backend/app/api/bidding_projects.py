@@ -2,10 +2,12 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_client_ip, get_current_user
 from app.core.security import CurrentUser
+from app.core.config import get_settings
 from app.db import get_db
 from app.models import AttachmentType, BiddingProject, ProjectStatus
 from app.schemas import (
@@ -53,7 +55,7 @@ def _to_group_tree_item(group) -> GroupTreeItem:
         bid_opening_at=group.bid_opening_at,
         created_at=group.created_at,
         updated_at=group.updated_at,
-        attachment_count=len(group.attachments),
+        attachment_count=sum(len(p.attachments) for p in group.projects),
         children=[_to_project_item(child) for child in children],
     )
 
@@ -69,7 +71,7 @@ def _to_detail(project: BiddingProject) -> ProjectDetail:
         status=project.status,
         created_at=project.created_at,
         updated_at=project.updated_at,
-        attachments=project.group.attachments,
+        attachments=project.attachments,
         feedback=project.feedback,
     )
 
@@ -142,28 +144,10 @@ async def create_bidding_project(
             raise HTTPException(status_code=400, detail="请上传招标文件")
         if not bid_doc or not bid_doc.filename:
             raise HTTPException(status_code=400, detail="请上传投标文件")
-        for upload, attachment_type in (
-            (tender_doc, AttachmentType.tender_doc),
-            (bid_doc, AttachmentType.bid_doc),
-        ):
-            try:
-                stored_name, original_name, size_bytes, content_type = await save_upload(upload, group.id)
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-            group_service.replace_attachment(
-                db,
-                group,
-                attachment_type,
-                original_name=original_name,
-                stored_name=stored_name,
-                size_bytes=size_bytes,
-                content_type=content_type,
-            )
         resolved_group_id = group.id
     else:
         if not payload.group_name:
             raise HTTPException(status_code=400, detail="请选择项目组或填写分组名称")
-
         group = group_service.create_group(
             db,
             owner=current_user.username,
@@ -172,25 +156,6 @@ async def create_bidding_project(
         )
         group = group_service.get_group(db, group.id, current_user.owner_filter)
         assert group is not None
-
-        for upload, attachment_type in (
-            (tender_doc, AttachmentType.tender_doc),
-            (bid_doc, AttachmentType.bid_doc),
-        ):
-            if upload and upload.filename:
-                try:
-                    stored_name, original_name, size_bytes, content_type = await save_upload(upload, group.id)
-                except ValueError as exc:
-                    raise HTTPException(status_code=400, detail=str(exc)) from exc
-                group_service.replace_attachment(
-                    db,
-                    group,
-                    attachment_type,
-                    original_name=original_name,
-                    stored_name=stored_name,
-                    size_bytes=size_bytes,
-                    content_type=content_type,
-                )
         resolved_group_id = group.id
 
     project = service.create_project(
@@ -200,6 +165,30 @@ async def create_bidding_project(
         participating_units=payload.participating_units,
         bid_opening_at=payload.bid_opening_at,
     )
+
+    if not tender_doc or not tender_doc.filename:
+        raise HTTPException(status_code=400, detail="请上传招标文件")
+    if not bid_doc or not bid_doc.filename:
+        raise HTTPException(status_code=400, detail="请上传投标文件")
+
+    for upload, attachment_type in (
+        (tender_doc, AttachmentType.tender_doc),
+        (bid_doc, AttachmentType.bid_doc),
+    ):
+        try:
+            stored_name, original_name, size_bytes, content_type = await save_upload(upload, project.id, prefix="project")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        service.replace_project_attachment(
+            db,
+            project,
+            attachment_type,
+            original_name=original_name,
+            stored_name=stored_name,
+            size_bytes=size_bytes,
+            content_type=content_type,
+        )
+
     project = service.get_project(db, project.id, current_user.owner_filter)
     assert project is not None
     log_service.record_log(
@@ -213,6 +202,35 @@ async def create_bidding_project(
         ip_address=get_client_ip(request),
     )
     return _to_detail(project)
+
+
+@router.get(
+    "/{project_id}/attachments/{attachment_id}/download",
+)
+def download_project_attachment(
+    project_id: int,
+    attachment_id: int,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> FileResponse:
+    project = service.get_project(db, project_id, current_user.owner_filter)
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    attachment = next((a for a in project.attachments if a.id == attachment_id), None)
+    if not attachment:
+        raise HTTPException(status_code=404, detail="附件不存在")
+
+    settings = get_settings()
+    file_path = settings.uploads_dir / attachment.stored_name
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="文件不存在")
+
+    return FileResponse(
+        path=file_path,
+        filename=attachment.original_name,
+        media_type=attachment.content_type or "application/octet-stream",
+    )
 
 
 @router.patch("/{project_id}", response_model=ProjectDetail)

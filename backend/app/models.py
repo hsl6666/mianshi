@@ -100,6 +100,24 @@ class GroupAttachment(Base):
     group: Mapped[BiddingProjectGroup] = relationship(back_populates="attachments")
 
 
+class ProjectAttachment(Base):
+    __tablename__ = "project_attachments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("bidding_projects.id", ondelete="CASCADE"),
+        index=True,
+    )
+    attachment_type: Mapped[AttachmentType] = mapped_column(Enum(AttachmentType), nullable=False)
+    original_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    stored_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[Optional[str]] = mapped_column(String(128))
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
+
+    project: Mapped["BiddingProject"] = relationship(back_populates="attachments")
+
+
 class BiddingProject(Base):
     __tablename__ = "bidding_projects"
 
@@ -125,6 +143,10 @@ class BiddingProject(Base):
     )
 
     group: Mapped[BiddingProjectGroup] = relationship(back_populates="projects")
+    attachments: Mapped[List["ProjectAttachment"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
     feedback: Mapped[Optional["ProjectFeedback"]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",

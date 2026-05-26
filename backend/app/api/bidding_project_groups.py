@@ -84,7 +84,7 @@ async def create_group(
     for upload, attachment_type in ((tender_doc, AttachmentType.tender_doc), (bid_doc, AttachmentType.bid_doc)):
         if upload and upload.filename:
             try:
-                stored_name, original_name, size_bytes, content_type = await save_upload(upload, group.id)
+                stored_name, original_name, size_bytes, content_type = await save_upload(upload, group.id, prefix="group")
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             group_service.replace_attachment(

@@ -1,8 +1,8 @@
-import { Descriptions, Drawer, Space, Tag, Typography } from "antd";
+import { Descriptions, Drawer, Space, Tag, Typography, message } from "antd";
 import dayjs from "dayjs";
 import { useResponsiveOverlay } from "@/hooks/useResponsiveOverlay";
 import { ATTACHMENT_TYPE_MAP, PROJECT_STATUS_MAP } from "../constants";
-import { getGroupAttachmentDownloadUrl } from "../api";
+import { downloadProjectAttachment } from "../api";
 import type { BiddingProjectDetail } from "../types";
 
 interface ProjectDetailDrawerProps {
@@ -17,6 +17,13 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
   if (!project) return null;
 
   const statusMeta = PROJECT_STATUS_MAP[project.status];
+  const handleDownload = async (attachmentId: number, filename: string) => {
+    try {
+      await downloadProjectAttachment({ projectId: project.id, attachmentId, filename });
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "下载失败");
+    }
+  };
 
   return (
     <Drawer
@@ -36,7 +43,7 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
         <Descriptions.Item label="开标时间">
           {dayjs(project.bid_opening_at).format("YYYY-MM-DD HH:mm")}
         </Descriptions.Item>
-        <Descriptions.Item label="项目组附件">
+        <Descriptions.Item label="项目附件">
           <Space direction="vertical" size={4}>
             {project.attachments.length === 0 ? (
               <span className="text-gray-400">暂无附件</span>
@@ -44,9 +51,13 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
               project.attachments.map((file) => (
                 <a
                   key={file.id}
-                  href={getGroupAttachmentDownloadUrl(project.group_id, file.id)}
+                  href="#"
                   target="_blank"
                   rel="noreferrer"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleDownload(file.id, file.original_name);
+                  }}
                 >
                   {ATTACHMENT_TYPE_MAP[file.attachment_type]}：{file.original_name}
                 </a>
