@@ -6,28 +6,58 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import get_settings
-from app.models import AttachmentType, BiddingProject, BiddingProjectGroup, ProjectAttachment, ProjectFeedback, ProjectStatus
+from app.core.timezone import china_now
+from app.models import (
+    AttachmentType,
+    BiddingCompany,
+    BiddingProject,
+    BiddingProjectGroup,
+    ProjectAttachment,
+    ProjectStatus,
+)
+
+
+def tender_attachments(project: BiddingProject) -> list[ProjectAttachment]:
+    return [a for a in project.attachments if a.company_id is None and a.attachment_type == AttachmentType.tender_doc]
+
+
+def company_status(company: BiddingCompany, project: BiddingProject, now: datetime | None = None) -> ProjectStatus:
+    current = now or china_now()
+    if project.bid_opening_at > current:
+        return ProjectStatus.registered
+    if company.feedback is not None:
+        return ProjectStatus.completed
+    return ProjectStatus.awaiting_feedback
 
 
 def sync_project_status(project: BiddingProject, now: datetime | None = None) -> None:
-    if project.feedback is not None:
-        project.status = ProjectStatus.completed
+    current = now or china_now()
+    companies = list(project.companies or [])
+    if not companies:
+        if project.bid_opening_at > current:
+            project.status = ProjectStatus.registered
+        else:
+            project.status = ProjectStatus.awaiting_feedback
         return
-    current = now or datetime.now()
-    if project.bid_opening_at <= current:
+
+    statuses = [company_status(company, project, current) for company in companies]
+    if all(status == ProjectStatus.completed for status in statuses):
+        project.status = ProjectStatus.completed
+    elif any(status == ProjectStatus.awaiting_feedback for status in statuses):
         project.status = ProjectStatus.awaiting_feedback
     else:
         project.status = ProjectStatus.registered
 
 
 def refresh_project_statuses(db: Session, owner: str | None) -> None:
-    now = datetime.now()
+    now = china_now()
     query = select(BiddingProject).join(BiddingProjectGroup).where(BiddingProject.bid_opening_at <= now)
     if owner:
         query = query.where(BiddingProjectGroup.owner == owner)
     rows = db.scalars(
-        query
-        .options(selectinload(BiddingProject.feedback))
+        query.options(
+            selectinload(BiddingProject.companies).selectinload(BiddingCompany.feedback),
+        )
     ).all()
     changed = False
     for project in rows:
@@ -56,8 +86,11 @@ def list_project_tree(
     if keyword:
         like = f"%{keyword.strip()}%"
         group_filters.append(BiddingProjectGroup.name.ilike(like))
+        company_project_ids = select(BiddingCompany.project_id).where(BiddingCompany.name.ilike(like))
         project_filters.append(
-            (BiddingProject.name.ilike(like)) | (BiddingProject.participating_units.ilike(like))
+            (BiddingProject.name.ilike(like))
+            | (BiddingProject.participating_units.ilike(like))
+            | BiddingProject.id.in_(company_project_ids)
         )
     if status is not None:
         project_filters.append(BiddingProject.status == status)
@@ -77,7 +110,12 @@ def list_project_tree(
         .where(*group_filters)
         .options(
             selectinload(BiddingProjectGroup.projects).selectinload(BiddingProject.attachments),
-            selectinload(BiddingProjectGroup.projects).selectinload(BiddingProject.feedback),
+            selectinload(BiddingProjectGroup.projects)
+            .selectinload(BiddingProject.companies)
+            .selectinload(BiddingCompany.attachments),
+            selectinload(BiddingProjectGroup.projects)
+            .selectinload(BiddingProject.companies)
+            .selectinload(BiddingCompany.feedback),
         )
     )
 
@@ -91,12 +129,32 @@ def list_project_tree(
         .all()
     )
 
-    now = datetime.now()
+    now = china_now()
     for group in groups:
         for project in group.projects:
             sync_project_status(project, now)
     db.commit()
     return groups, total
+
+
+def find_project_by_group_and_name(
+    db: Session,
+    group_id: int,
+    name: str,
+    owner: str | None = None,
+) -> BiddingProject | None:
+    query = (
+        select(BiddingProject)
+        .join(BiddingProjectGroup)
+        .where(BiddingProject.group_id == group_id, BiddingProject.name == name.strip())
+        .options(
+            selectinload(BiddingProject.attachments),
+            selectinload(BiddingProject.companies).selectinload(BiddingCompany.attachments),
+        )
+    )
+    if owner is not None:
+        query = query.where(BiddingProjectGroup.owner == owner)
+    return db.scalar(query)
 
 
 def get_project(db: Session, project_id: int, owner: str | None = None) -> BiddingProject | None:
@@ -107,7 +165,8 @@ def get_project(db: Session, project_id: int, owner: str | None = None) -> Biddi
         .options(
             selectinload(BiddingProject.group),
             selectinload(BiddingProject.attachments),
-            selectinload(BiddingProject.feedback),
+            selectinload(BiddingProject.companies).selectinload(BiddingCompany.attachments),
+            selectinload(BiddingProject.companies).selectinload(BiddingCompany.feedback),
         )
     )
     if owner is not None:
@@ -124,15 +183,18 @@ def create_project(
     *,
     group_id: int,
     name: str,
-    participating_units: str,
+    participating_units: str = "",
     bid_opening_at: datetime,
 ) -> BiddingProject:
+    now = china_now()
     project = BiddingProject(
         group_id=group_id,
         name=name.strip(),
-        participating_units=participating_units.strip(),
+        participating_units=(participating_units or "").strip(),
         bid_opening_at=bid_opening_at,
         status=ProjectStatus.registered,
+        created_at=now,
+        updated_at=now,
     )
     db.add(project)
     db.flush()
@@ -153,7 +215,14 @@ def replace_project_attachment(
     content_type: str | None,
 ) -> ProjectAttachment:
     settings = get_settings()
-    existing = next((a for a in project.attachments if a.attachment_type == attachment_type), None)
+    existing = next(
+        (
+            a
+            for a in project.attachments
+            if a.company_id is None and a.attachment_type == attachment_type
+        ),
+        None,
+    )
     if existing:
         old_path = settings.uploads_dir / existing.stored_name
         if old_path.exists():
@@ -168,6 +237,7 @@ def replace_project_attachment(
         stored_name=stored_name,
         size_bytes=size_bytes,
         content_type=content_type,
+        created_at=china_now(),
     )
     db.add(attachment)
     db.commit()
@@ -195,38 +265,38 @@ def update_project(
     return project
 
 
-def submit_feedback(
-    db: Session,
-    project: BiddingProject,
-    *,
-    final_score: float,
-    ranking: int | None,
-    score_detail: str | None,
-    remark: str | None,
-) -> ProjectFeedback:
-    if project.status == ProjectStatus.registered:
-        raise ValueError("开标时间未到，暂不可提交评审反馈")
-    if project.feedback is not None:
-        project.feedback.final_score = final_score
-        project.feedback.ranking = ranking
-        project.feedback.score_detail = score_detail
-        project.feedback.remark = remark
-        feedback = project.feedback
-    else:
-        feedback = ProjectFeedback(
-            project_id=project.id,
-            final_score=final_score,
-            ranking=ranking,
-            score_detail=score_detail,
-            remark=remark,
-        )
-        db.add(feedback)
-    sync_project_status(project)
-    db.commit()
-    db.refresh(feedback)
-    return feedback
-
-
 def delete_project(db: Session, project: BiddingProject) -> None:
     db.delete(project)
     db.commit()
+
+
+def list_form_options(
+    db: Session,
+    owner: str | None,
+    group_id: int | None = None,
+) -> tuple[list[str], list[str]]:
+    project_query = (
+        select(BiddingProject.name)
+        .join(BiddingProjectGroup)
+        .where(BiddingProject.name.is_not(None))
+        .distinct()
+        .order_by(BiddingProject.name)
+    )
+    company_query = (
+        select(BiddingCompany.name)
+        .join(BiddingProject)
+        .join(BiddingProjectGroup)
+        .where(BiddingCompany.name.is_not(None))
+        .distinct()
+        .order_by(BiddingCompany.name)
+    )
+    if owner:
+        project_query = project_query.where(BiddingProjectGroup.owner == owner)
+        company_query = company_query.where(BiddingProjectGroup.owner == owner)
+    if group_id is not None:
+        project_query = project_query.where(BiddingProject.group_id == group_id)
+        company_query = company_query.where(BiddingProject.group_id == group_id)
+
+    project_names = [n.strip() for n in db.scalars(project_query).all() if n and n.strip()]
+    company_names = [n.strip() for n in db.scalars(company_query).all() if n and n.strip()]
+    return project_names, company_names

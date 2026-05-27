@@ -1,4 +1,5 @@
 from datetime import datetime
+
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
@@ -66,7 +67,12 @@ async def create_group(
     tender_doc: Optional[UploadFile] = File(None),
     bid_doc: Optional[UploadFile] = File(None),
 ) -> GroupDetail:
-    resolved_opening_at = bid_opening_at or datetime.now()
+    if not tender_doc or not tender_doc.filename:
+        raise HTTPException(status_code=400, detail="请上传招标文件")
+    if not bid_opening_at:
+        raise HTTPException(status_code=400, detail="请选择开标时间")
+
+    resolved_opening_at = bid_opening_at
     try:
         payload = GroupCreate(name=name, bid_opening_at=resolved_opening_at)
     except Exception as exc:
@@ -81,23 +87,42 @@ async def create_group(
     group = group_service.get_group(db, group.id, current_user.owner_filter)
     assert group is not None
 
-    for upload, attachment_type in ((tender_doc, AttachmentType.tender_doc), (bid_doc, AttachmentType.bid_doc)):
-        if upload and upload.filename:
-            try:
-                stored_name, original_name, size_bytes, content_type = await save_upload(upload, group.id, prefix="group")
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-            group_service.replace_attachment(
-                db,
-                group,
-                attachment_type,
-                original_name=original_name,
-                stored_name=stored_name,
-                size_bytes=size_bytes,
-                content_type=content_type,
+    try:
+        stored_name, original_name, size_bytes, content_type = await save_upload(
+            tender_doc, group.id, prefix="group"
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    group_service.replace_attachment(
+        db,
+        group,
+        AttachmentType.tender_doc,
+        original_name=original_name,
+        stored_name=stored_name,
+        size_bytes=size_bytes,
+        content_type=content_type,
+    )
+    group = group_service.get_group(db, group.id, current_user.owner_filter)
+    assert group is not None
+
+    if bid_doc and bid_doc.filename:
+        try:
+            stored_name, original_name, size_bytes, content_type = await save_upload(
+                bid_doc, group.id, prefix="group"
             )
-            group = group_service.get_group(db, group.id, current_user.owner_filter)
-            assert group is not None
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        group_service.replace_attachment(
+            db,
+            group,
+            AttachmentType.bid_doc,
+            original_name=original_name,
+            stored_name=stored_name,
+            size_bytes=size_bytes,
+            content_type=content_type,
+        )
+        group = group_service.get_group(db, group.id, current_user.owner_filter)
+        assert group is not None
 
     log_service.record_log(
         db,
@@ -119,16 +144,22 @@ def update_group(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
     name: str = Form(...),
+    bid_opening_at: datetime = Form(...),
 ) -> GroupDetail:
     group = group_service.get_group(db, group_id, current_user.owner_filter)
     if not group:
         raise HTTPException(status_code=404, detail="项目组不存在")
     try:
-        payload = GroupUpdate(name=name)
+        payload = GroupUpdate(name=name, bid_opening_at=bid_opening_at)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    group_service.update_group(db, group, name=payload.name)
+    group_service.update_group(
+        db,
+        group,
+        name=payload.name,
+        bid_opening_at=payload.bid_opening_at,
+    )
     group = group_service.get_group(db, group_id, current_user.owner_filter)
     assert group is not None
     log_service.record_log(

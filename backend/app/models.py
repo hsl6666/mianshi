@@ -4,9 +4,10 @@ import enum
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.timezone import china_now
 from app.db import Base
 
 
@@ -35,11 +36,11 @@ class User(Base):
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.user, nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     display_name: Mapped[Optional[str]] = mapped_column(String(64))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=china_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False),
-        server_default=func.now(),
-        onupdate=func.now(),
+        default=china_now,
+        onupdate=china_now,
     )
 
 
@@ -55,7 +56,11 @@ class OperationLog(Base):
     summary: Mapped[str] = mapped_column(String(500), nullable=False)
     detail: Mapped[Optional[str]] = mapped_column(Text)
     ip_address: Mapped[Optional[str]] = mapped_column(String(64))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False),
+        default=china_now,
+        index=True,
+    )
 
 
 class BiddingProjectGroup(Base):
@@ -65,11 +70,11 @@ class BiddingProjectGroup(Base):
     owner: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     bid_opening_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=china_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False),
-        server_default=func.now(),
-        onupdate=func.now(),
+        default=china_now,
+        onupdate=china_now,
     )
 
     attachments: Mapped[List["GroupAttachment"]] = relationship(
@@ -95,7 +100,7 @@ class GroupAttachment(Base):
     stored_name: Mapped[str] = mapped_column(String(255), nullable=False)
     content_type: Mapped[Optional[str]] = mapped_column(String(128))
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=china_now)
 
     group: Mapped[BiddingProjectGroup] = relationship(back_populates="attachments")
 
@@ -108,14 +113,52 @@ class ProjectAttachment(Base):
         ForeignKey("bidding_projects.id", ondelete="CASCADE"),
         index=True,
     )
+    company_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("bidding_companies.id", ondelete="CASCADE"),
+        index=True,
+        nullable=True,
+    )
     attachment_type: Mapped[AttachmentType] = mapped_column(Enum(AttachmentType), nullable=False)
     original_name: Mapped[str] = mapped_column(String(255), nullable=False)
     stored_name: Mapped[str] = mapped_column(String(255), nullable=False)
     content_type: Mapped[Optional[str]] = mapped_column(String(128))
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
+    version_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    analysis_status: Mapped[bool] = mapped_column(default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=china_now)
 
     project: Mapped["BiddingProject"] = relationship(back_populates="attachments")
+    company: Mapped[Optional["BiddingCompany"]] = relationship(back_populates="attachments")
+
+
+class BiddingCompany(Base):
+    __tablename__ = "bidding_companies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("bidding_projects.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=china_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False),
+        default=china_now,
+        onupdate=china_now,
+    )
+
+    project: Mapped["BiddingProject"] = relationship(back_populates="companies")
+    attachments: Mapped[List["ProjectAttachment"]] = relationship(
+        back_populates="company",
+        cascade="all, delete-orphan",
+        foreign_keys="ProjectAttachment.company_id",
+    )
+    feedback: Mapped[Optional["CompanyFeedback"]] = relationship(
+        back_populates="company",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
 
 
 class BiddingProject(Base):
@@ -135,31 +178,32 @@ class BiddingProject(Base):
         default=ProjectStatus.registered,
         nullable=False,
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=china_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False),
-        server_default=func.now(),
-        onupdate=func.now(),
+        default=china_now,
+        onupdate=china_now,
     )
 
     group: Mapped[BiddingProjectGroup] = relationship(back_populates="projects")
+    companies: Mapped[List["BiddingCompany"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        order_by="BiddingCompany.id",
+    )
     attachments: Mapped[List["ProjectAttachment"]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
-    )
-    feedback: Mapped[Optional["ProjectFeedback"]] = relationship(
-        back_populates="project",
-        cascade="all, delete-orphan",
-        uselist=False,
+        foreign_keys="ProjectAttachment.project_id",
     )
 
 
-class ProjectFeedback(Base):
-    __tablename__ = "project_feedbacks"
+class CompanyFeedback(Base):
+    __tablename__ = "company_feedbacks"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(
-        ForeignKey("bidding_projects.id", ondelete="CASCADE"),
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("bidding_companies.id", ondelete="CASCADE"),
         unique=True,
         index=True,
     )
@@ -167,11 +211,11 @@ class ProjectFeedback(Base):
     ranking: Mapped[Optional[int]] = mapped_column(Integer)
     score_detail: Mapped[Optional[str]] = mapped_column(Text)
     remark: Mapped[Optional[str]] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=china_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False),
-        server_default=func.now(),
-        onupdate=func.now(),
+        default=china_now,
+        onupdate=china_now,
     )
 
-    project: Mapped[BiddingProject] = relationship(back_populates="feedback")
+    company: Mapped[BiddingCompany] = relationship(back_populates="feedback")

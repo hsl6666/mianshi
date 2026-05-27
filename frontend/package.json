@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "tsc -b && rm -f tsconfig.app.tsbuildinfo tsconfig.node.tsbuildinfo && vite build",
     "format": "prettier --write '**/*.{js,ts,jsx,tsx}'",
     "preview": "vite preview",

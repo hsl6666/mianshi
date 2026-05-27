@@ -2,13 +2,15 @@ export type ProjectStatus = "registered" | "awaiting_feedback" | "completed";
 
 export type AttachmentType = "tender_doc" | "bid_doc";
 
-export type RowType = "group" | "project";
+export type RowType = "group" | "project" | "company" | "version";
 
 export interface ProjectAttachment {
   id: number;
   attachment_type: AttachmentType;
   original_name: string;
   size_bytes: number;
+  version_number?: number | null;
+  analysis_status?: boolean;
   created_at: string;
 }
 
@@ -41,6 +43,43 @@ export interface BiddingProjectGroupDetail {
   attachments: ProjectAttachment[];
 }
 
+export interface BidVersionListItem {
+  row_type: "version";
+  id: number;
+  company_id: number;
+  project_id: number;
+  version_number: number;
+  original_name: string;
+  size_bytes: number;
+  analysis_status: boolean;
+  created_at: string;
+}
+
+export interface BiddingCompanyListItem {
+  row_type: "company";
+  id: number;
+  project_id: number;
+  name: string;
+  bid_opening_at: string;
+  status: ProjectStatus;
+  created_at: string;
+  updated_at: string;
+  version_count: number;
+  final_score: number | null;
+  ranking: number | null;
+  children: BidVersionListItem[];
+}
+
+export interface BiddingCompanyDetail {
+  id: number;
+  project_id: number;
+  name: string;
+  created_at: string;
+  updated_at: string;
+  attachments: ProjectAttachment[];
+  feedback: ProjectFeedback | null;
+}
+
 export interface BiddingProjectListItem {
   row_type: "project";
   id: number;
@@ -53,6 +92,9 @@ export interface BiddingProjectListItem {
   updated_at: string;
   final_score: number | null;
   ranking: number | null;
+  company_count: number;
+  attachments: ProjectAttachment[];
+  children: BiddingCompanyListItem[];
 }
 
 export interface BiddingProjectGroupTreeItem {
@@ -66,7 +108,11 @@ export interface BiddingProjectGroupTreeItem {
   children: BiddingProjectListItem[];
 }
 
-export type ProjectTreeRow = BiddingProjectGroupTreeItem | BiddingProjectListItem;
+export type ProjectTreeRow =
+  | BiddingProjectGroupTreeItem
+  | BiddingProjectListItem
+  | BiddingCompanyListItem
+  | BidVersionListItem;
 
 export interface BiddingProjectDetail {
   id: number;
@@ -79,7 +125,7 @@ export interface BiddingProjectDetail {
   created_at: string;
   updated_at: string;
   attachments: ProjectAttachment[];
-  feedback: ProjectFeedback | null;
+  companies: BiddingCompanyDetail[];
 }
 
 export interface PaginatedProjectTree {
@@ -89,19 +135,32 @@ export interface PaginatedProjectTree {
   page_size: number;
 }
 
+export interface ProjectRevisionPreset {
+  groupId: number;
+  projectName: string;
+  companyName: string;
+  bidOpeningAt: string;
+}
+
+export interface ProjectFormOptions {
+  project_names: string[];
+  company_names: string[];
+}
+
 export interface ProjectFormValues {
   group_mode: "existing" | "new";
   group_id?: number;
   group_name?: string;
+  group_bid_opening_at?: string;
   name?: string;
   participating_units?: string;
-  bid_opening_at?: string;
   tender_doc?: File;
   bid_doc?: File;
 }
 
 export interface GroupFormValues {
   name: string;
+  bid_opening_at: string;
 }
 
 export interface FeedbackFormValues {
@@ -109,4 +168,11 @@ export interface FeedbackFormValues {
   ranking?: number;
   score_detail?: string;
   remark?: string;
+}
+
+export interface FeedbackTarget {
+  companyId: number;
+  companyName: string;
+  projectName: string;
+  feedback: ProjectFeedback | null;
 }

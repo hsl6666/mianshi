@@ -16,7 +16,7 @@ import {
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { EditOutlined, PlusOutlined } from "@ant-design/icons";
-import dayjs from "dayjs";
+import { formatChinaTime } from "@/utils/date";
 import {
   createUser,
   deleteUser,
@@ -158,7 +158,7 @@ export default function UserManagementPage() {
       title: "创建时间",
       dataIndex: "created_at",
       width: 170,
-      render: (v: string) => dayjs(v).format("YYYY-MM-DD HH:mm"),
+      render: (v: string) => formatChinaTime(v, "YYYY-MM-DD HH:mm"),
     },
     {
       title: "操作",

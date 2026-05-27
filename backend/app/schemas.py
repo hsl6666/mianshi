@@ -11,6 +11,8 @@ class AttachmentOut(BaseModel):
     attachment_type: AttachmentType
     original_name: str
     size_bytes: int
+    version_number: Optional[int] = None
+    analysis_status: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -61,6 +63,37 @@ class GroupUpdate(BaseModel):
     bid_opening_at: Optional[datetime] = None
 
 
+class BidVersionListItem(BaseModel):
+    row_type: Literal["version"] = "version"
+    id: int
+    company_id: int
+    project_id: int
+    version_number: int
+    original_name: str
+    size_bytes: int
+    analysis_status: bool = False
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class CompanyListItem(BaseModel):
+    row_type: Literal["company"] = "company"
+    id: int
+    project_id: int
+    name: str
+    bid_opening_at: datetime
+    status: ProjectStatus
+    created_at: datetime
+    updated_at: datetime
+    version_count: int = 0
+    final_score: Optional[float] = None
+    ranking: Optional[int] = None
+    children: List[BidVersionListItem] = []
+
+    model_config = {"from_attributes": True}
+
+
 class ProjectListItem(BaseModel):
     row_type: Literal["project"] = "project"
     id: int
@@ -73,6 +106,9 @@ class ProjectListItem(BaseModel):
     updated_at: datetime
     final_score: Optional[float] = None
     ranking: Optional[int] = None
+    company_count: int = 0
+    attachments: List[AttachmentOut] = []
+    children: List[CompanyListItem] = []
 
     model_config = {"from_attributes": True}
 
@@ -90,7 +126,19 @@ class GroupTreeItem(BaseModel):
     model_config = {"from_attributes": True}
 
 
-TreeRow = Union[GroupTreeItem, ProjectListItem]
+TreeRow = Union[GroupTreeItem, ProjectListItem, CompanyListItem, BidVersionListItem]
+
+
+class CompanyDetail(BaseModel):
+    id: int
+    project_id: int
+    name: str
+    created_at: datetime
+    updated_at: datetime
+    attachments: List[AttachmentOut] = []
+    feedback: Optional[FeedbackOut] = None
+
+    model_config = {"from_attributes": True}
 
 
 class ProjectDetail(BaseModel):
@@ -104,9 +152,14 @@ class ProjectDetail(BaseModel):
     created_at: datetime
     updated_at: datetime
     attachments: List[AttachmentOut] = []
-    feedback: Optional[FeedbackOut] = None
+    companies: List[CompanyDetail] = []
 
     model_config = {"from_attributes": True}
+
+
+class ProjectFormOptions(BaseModel):
+    project_names: List[str] = []
+    company_names: List[str] = []
 
 
 class ProjectCreate(BaseModel):
@@ -115,13 +168,21 @@ class ProjectCreate(BaseModel):
     group_bid_opening_at: Optional[datetime] = None
     name: str = Field(min_length=1, max_length=200)
     participating_units: str = Field(min_length=1, max_length=200)
-    bid_opening_at: datetime
+    bid_opening_at: Optional[datetime] = None
 
 
 class ProjectUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
     participating_units: Optional[str] = Field(default=None, min_length=1, max_length=200)
     bid_opening_at: Optional[datetime] = None
+
+
+class CompanyUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+
+
+class BidVersionAnalysisUpdate(BaseModel):
+    analysis_status: bool
 
 
 class FeedbackCreate(BaseModel):

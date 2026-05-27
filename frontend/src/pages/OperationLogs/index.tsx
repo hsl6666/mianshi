@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button, Card, Form, Input, Select, Space, Table, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { SearchOutlined } from "@ant-design/icons";
-import dayjs from "dayjs";
+import { formatChinaTime } from "@/utils/date";
 import { fetchOperationLogs, type OperationLogItem } from "@/api/auth";
 
 const MODULE_OPTIONS = [
@@ -61,7 +61,7 @@ export default function OperationLogsPage() {
       title: "时间",
       dataIndex: "created_at",
       width: 170,
-      render: (v: string) => dayjs(v).format("YYYY-MM-DD HH:mm:ss"),
+      render: (v: string) => formatChinaTime(v, "YYYY-MM-DD HH:mm:ss"),
     },
     { title: "操作人", dataIndex: "username", width: 100 },
     {

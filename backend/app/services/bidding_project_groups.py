@@ -6,7 +6,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import get_settings
-from app.models import AttachmentType, BiddingProjectGroup, GroupAttachment
+from app.core.timezone import china_now
+from app.models import AttachmentType, BiddingProject, BiddingProjectGroup, GroupAttachment
+from app.services.bidding_projects import sync_project_status
 
 
 def list_groups(db: Session, owner: str | None, keyword: str | None = None) -> list[BiddingProjectGroup]:
@@ -70,6 +72,10 @@ def update_group(
         group.name = name.strip()
     if bid_opening_at is not None:
         group.bid_opening_at = bid_opening_at
+        projects = db.scalars(select(BiddingProject).where(BiddingProject.group_id == group.id)).all()
+        for project in projects:
+            project.bid_opening_at = bid_opening_at
+            sync_project_status(project)
     db.commit()
     db.refresh(group)
     return group
@@ -100,6 +106,7 @@ def replace_attachment(
         stored_name=stored_name,
         size_bytes=size_bytes,
         content_type=content_type,
+        created_at=china_now(),
     )
     db.add(attachment)
     db.commit()

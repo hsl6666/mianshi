@@ -1,25 +1,48 @@
-import { Button, Card, Collapse, Empty, Popconfirm, Space, Spin, Tag } from "antd";
-import dayjs from "dayjs";
+import { useEffect, useState } from "react";
+import { Button, Card, Collapse, Empty, Popconfirm, Space, Spin, Tag, Tooltip } from "antd";
+import { formatChinaTime } from "@/utils/date";
 import {
+  BankOutlined,
   DeleteOutlined,
+  DownloadOutlined,
   EditOutlined,
   EyeOutlined,
   FileSearchOutlined,
   FolderOutlined,
+  HistoryOutlined,
   PlusOutlined,
 } from "@ant-design/icons";
+import BidFilePreviewLink from "./BidFilePreviewLink";
+import AnalysisStatusSwitch from "./AnalysisStatusSwitch";
+import EllipsisTooltip from "./EllipsisTooltip";
 import { PROJECT_STATUS_MAP } from "../constants";
-import type { BiddingProjectGroupTreeItem } from "../types";
+import type {
+  BidVersionListItem,
+  BiddingCompanyListItem,
+  BiddingProjectGroupTreeItem,
+  BiddingProjectListItem,
+} from "../types";
 
 interface ProjectMobileCardListProps {
   loading: boolean;
   groups: BiddingProjectGroupTreeItem[];
   onDetail: (id: number) => void;
   onEdit: (id: number) => void;
-  onFeedback: (id: number) => void;
+  onFeedback: (company: BiddingCompanyListItem, project: BiddingProjectListItem) => void;
   onDelete: (id: number) => void;
   onEditGroup: (group: BiddingProjectGroupTreeItem) => void;
   onAddProject: (groupId: number) => void;
+  onUploadRevision: (
+    groupId: number,
+    project: Pick<BiddingProjectListItem, "name" | "bid_opening_at">,
+    company: Pick<BiddingCompanyListItem, "name">,
+  ) => void;
+  onDeleteCompany: (id: number) => void;
+  onPreviewVersion: (record: BidVersionListItem) => void;
+  onDownloadVersion: (record: BidVersionListItem) => void;
+  onAnalysisStatusChange: (record: BidVersionListItem, analysisStatus: boolean) => void;
+  isSuperAdmin: boolean;
+  onDeleteVersion: (id: number) => void;
 }
 
 export default function ProjectMobileCardList({
@@ -31,7 +54,20 @@ export default function ProjectMobileCardList({
   onDelete,
   onEditGroup,
   onAddProject,
+  onUploadRevision,
+  onDeleteCompany,
+  onPreviewVersion,
+  onDownloadVersion,
+  onAnalysisStatusChange,
+  isSuperAdmin,
+  onDeleteVersion,
 }: ProjectMobileCardListProps) {
+  const [activeKeys, setActiveKeys] = useState<string[]>([]);
+
+  useEffect(() => {
+    setActiveKeys(groups[0] ? [String(groups[0].id)] : []);
+  }, [groups]);
+
   if (loading && groups.length === 0) {
     return (
       <div className="flex justify-center py-16">
@@ -46,16 +82,19 @@ export default function ProjectMobileCardList({
 
   return (
     <Collapse
-      defaultActiveKey={groups.map((g) => String(g.id))}
+      activeKey={activeKeys}
+      onChange={(keys) => setActiveKeys(keys as string[])}
       items={groups.map((group) => ({
         key: String(group.id),
         label: (
           <div className="flex items-center gap-2 min-w-0">
             <FolderOutlined className="text-blue-500 shrink-0" />
             <div className="min-w-0 flex-1">
-              <div className="font-medium truncate">{group.name}</div>
+              <EllipsisTooltip title={group.name}>
+                <div className="font-medium">{group.name}</div>
+              </EllipsisTooltip>
               <div className="text-xs text-gray-500">
-                {dayjs(group.bid_opening_at).format("YYYY-MM-DD HH:mm")} · {group.children.length} 个项目 ·{" "}
+                {formatChinaTime(group.bid_opening_at, "YYYY-MM-DD HH:mm")} · {group.children.length} 个项目 ·{" "}
                 {group.attachment_count} 个附件
               </div>
             </div>
@@ -82,19 +121,100 @@ export default function ProjectMobileCardList({
                   <Card key={record.id} size="small" className="shadow-sm">
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <div className="min-w-0 flex-1">
-                        <div className="font-medium text-base leading-snug break-words">{record.name}</div>
-                        <div className="text-gray-500 text-sm mt-1 truncate">{record.participating_units}</div>
+                        <EllipsisTooltip title={record.name}>
+                          <div className="font-medium text-base leading-snug">{record.name}</div>
+                        </EllipsisTooltip>
+                        <EllipsisTooltip
+                          title={
+                            record.company_count > 0
+                              ? `${record.company_count} 家 · ${record.participating_units}`
+                              : record.participating_units || "暂无参加单位"
+                          }
+                        >
+                          <div className="text-gray-500 text-sm mt-1">
+                            {record.company_count > 0
+                              ? `${record.company_count} 家 · ${record.participating_units}`
+                              : record.participating_units || "暂无参加单位"}
+                          </div>
+                        </EllipsisTooltip>
                       </div>
                       <Tag color={statusMeta.color} className="shrink-0 m-0">
                         {statusMeta.label}
                       </Tag>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm text-gray-600 mb-3">
-                      <span>开标：{dayjs(record.bid_opening_at).format("MM-DD HH:mm")}</span>
-                      <span>得分：{record.final_score != null ? record.final_score.toFixed(2) : "-"}</span>
-                      <span>排名：{record.ranking ?? "-"}</span>
-                    </div>
+                    {record.children.length > 0 && (
+                      <div className="mb-3 flex flex-col gap-2 rounded-lg bg-gray-50 p-2">
+                        {record.children.map((company) => (
+                          <div key={company.id} className="border-b border-gray-100 pb-2 last:border-0 last:pb-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1 text-sm font-medium min-w-0 flex-1">
+                                <BankOutlined className="text-emerald-600 shrink-0" />
+                                <EllipsisTooltip title={company.name}>{company.name}</EllipsisTooltip>
+                                <Tag className="m-0 shrink-0">{company.version_count} 版</Tag>
+                              </div>
+                              <Space size={0}>
+                                <Button
+                                  type="link"
+                                  size="small"
+                                  icon={<FileSearchOutlined />}
+                                  disabled={company.status === "registered"}
+                                  onClick={() => onFeedback(company, record)}
+                                />
+                                <Button
+                                  type="link"
+                                  size="small"
+                                  icon={<HistoryOutlined />}
+                                  onClick={() => onUploadRevision(group.id, record, company)}
+                                />
+                                <Popconfirm title="删除该单位及全部版本？" onConfirm={() => onDeleteCompany(company.id)}>
+                                  <Button type="link" size="small" danger icon={<DeleteOutlined />} />
+                                </Popconfirm>
+                              </Space>
+                            </div>
+                            <div className="mt-1 pl-5 space-y-1">
+                              {company.children.map((version) => (
+                                <div key={version.id} className="flex flex-col gap-1 text-xs text-gray-600">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex min-w-0 flex-1 items-center">
+                                      <span className="shrink-0">v{version.version_number} · </span>
+                                      <BidFilePreviewLink attachmentId={version.id} filename={version.original_name} />
+                                    </div>
+                                    <Space size={0}>
+                                      <Tooltip title="预览">
+                                        <Button
+                                          type="link"
+                                          size="small"
+                                          icon={<EyeOutlined />}
+                                          onClick={() => onPreviewVersion(version)}
+                                        />
+                                      </Tooltip>
+                                      <Button
+                                        type="link"
+                                        size="small"
+                                        icon={<DownloadOutlined />}
+                                        onClick={() => onDownloadVersion(version)}
+                                      />
+                                      <Popconfirm title="删除该版本？" onConfirm={() => onDeleteVersion(version.id)}>
+                                        <Button type="link" size="small" danger icon={<DeleteOutlined />} />
+                                      </Popconfirm>
+                                    </Space>
+                                  </div>
+                                  <div className="flex items-center gap-2 pl-5">
+                                    <span className="text-gray-500">分析状态</span>
+                                    <AnalysisStatusSwitch
+                                      value={version.analysis_status}
+                                      disabled={!isSuperAdmin}
+                                      onChange={(checked) => onAnalysisStatusChange(version, checked)}
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
                     <Space wrap className="w-full">
                       <Button size="small" icon={<EyeOutlined />} onClick={() => onDetail(record.id)}>
@@ -102,14 +222,6 @@ export default function ProjectMobileCardList({
                       </Button>
                       <Button size="small" icon={<EditOutlined />} onClick={() => onEdit(record.id)}>
                         编辑
-                      </Button>
-                      <Button
-                        size="small"
-                        icon={<FileSearchOutlined />}
-                        disabled={record.status === "registered"}
-                        onClick={() => onFeedback(record.id)}
-                      >
-                        {record.status === "completed" ? "改反馈" : "填反馈"}
                       </Button>
                       <Popconfirm title="确定删除该项目？" onConfirm={() => onDelete(record.id)}>
                         <Button size="small" danger icon={<DeleteOutlined />}>

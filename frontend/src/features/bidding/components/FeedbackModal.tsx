@@ -1,33 +1,33 @@
 import { useEffect } from "react";
 import { Form, Input, InputNumber, Modal } from "antd";
 import { useResponsiveOverlay } from "@/hooks/useResponsiveOverlay";
-import type { BiddingProjectDetail, FeedbackFormValues } from "../types";
+import type { FeedbackFormValues, FeedbackTarget } from "../types";
 
 interface FeedbackModalProps {
   open: boolean;
   loading?: boolean;
-  project: BiddingProjectDetail | null;
+  target: FeedbackTarget | null;
   onCancel: () => void;
   onSubmit: (values: FeedbackFormValues) => Promise<void>;
 }
 
-export default function FeedbackModal({ open, loading, project, onCancel, onSubmit }: FeedbackModalProps) {
+export default function FeedbackModal({ open, loading, target, onCancel, onSubmit }: FeedbackModalProps) {
   const [form] = Form.useForm<FeedbackFormValues>();
   const { isMobile, modalProps } = useResponsiveOverlay();
 
   useEffect(() => {
-    if (!open || !project) return;
-    if (project.feedback) {
+    if (!open || !target) return;
+    if (target.feedback) {
       form.setFieldsValue({
-        final_score: project.feedback.final_score,
-        ranking: project.feedback.ranking ?? undefined,
-        score_detail: project.feedback.score_detail ?? undefined,
-        remark: project.feedback.remark ?? undefined,
+        final_score: target.feedback.final_score,
+        ranking: target.feedback.ranking ?? undefined,
+        score_detail: target.feedback.score_detail ?? undefined,
+        remark: target.feedback.remark ?? undefined,
       });
     } else {
       form.resetFields();
     }
-  }, [open, project, form]);
+  }, [open, target, form]);
 
   const handleOk = async () => {
     const values = await form.validateFields();
@@ -47,7 +47,7 @@ export default function FeedbackModal({ open, loading, project, onCancel, onSubm
       {...modalProps}
     >
       <p className="text-gray-500 mb-4 text-sm">
-        项目「{project?.name}」开标后，请录入最终打分与排名情况，便于后续复盘与案例沉淀。
+        项目「{target?.projectName}」/ 参加单位「{target?.companyName}」开标后，请录入该单位的最终打分与排名情况。
       </p>
       <Form form={form} layout="vertical" preserve={false}>
         <Form.Item

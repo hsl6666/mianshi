@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.timezone import china_now
 from app.models import OperationLog
 
 
@@ -33,6 +34,7 @@ def record_log(
         summary=summary,
         detail=detail_text,
         ip_address=ip_address,
+        created_at=china_now(),
     )
     db.add(log)
     db.commit()

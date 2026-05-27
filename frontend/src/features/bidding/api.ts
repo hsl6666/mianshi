@@ -1,14 +1,17 @@
-import dayjs from "dayjs";
 import { apiClient } from "@/request/client";
+import { formatChinaTimeForApi } from "@/utils/date";
 import type {
   BiddingProjectDetail,
   BiddingProjectGroupDetail,
   BiddingProjectGroupListItem,
+  BiddingCompanyDetail,
   FeedbackFormValues,
   GroupFormValues,
   PaginatedProjectTree,
+  ProjectFormOptions,
   ProjectFormValues,
 } from "./types";
+import { downloadBidVersionFile, getBidVersionPreviewUrl, previewBidVersion } from "./utils/filePreview";
 
 export async function fetchProjects(params: {
   page?: number;
@@ -22,6 +25,13 @@ export async function fetchProjects(params: {
 
 export async function fetchProject(id: number): Promise<BiddingProjectDetail> {
   const { data } = await apiClient.get<BiddingProjectDetail>(`/api/bidding-projects/${id}`);
+  return data;
+}
+
+export async function fetchProjectFormOptions(groupId?: number): Promise<ProjectFormOptions> {
+  const { data } = await apiClient.get<ProjectFormOptions>("/api/bidding-projects/form-options", {
+    params: groupId ? { group_id: groupId } : undefined,
+  });
   return data;
 }
 
@@ -41,7 +51,6 @@ function buildProjectFormData(values: ProjectFormValues): FormData {
   const formData = new FormData();
   formData.append("name", (values.name || "").trim());
   formData.append("participating_units", (values.participating_units || "").trim());
-  formData.append("bid_opening_at", dayjs(values.bid_opening_at).format("YYYY-MM-DDTHH:mm:ss"));
 
   if (values.group_id) {
     formData.append("group_id", String(values.group_id));
@@ -53,9 +62,15 @@ function buildProjectFormData(values: ProjectFormValues): FormData {
   return formData;
 }
 
-export async function createGroup(name: string): Promise<BiddingProjectGroupDetail> {
+export async function createGroup(
+  name: string,
+  tenderDoc?: File,
+  bidOpeningAt?: string,
+): Promise<BiddingProjectGroupDetail> {
   const formData = new FormData();
   formData.append("name", name.trim());
+  if (tenderDoc) formData.append("tender_doc", tenderDoc);
+  if (bidOpeningAt) formData.append("bid_opening_at", formatChinaTimeForApi(bidOpeningAt));
   const { data } = await apiClient.post<BiddingProjectGroupDetail>(
     "/api/bidding-project-groups",
     formData,
@@ -75,12 +90,11 @@ export async function createProject(values: ProjectFormValues): Promise<BiddingP
 
 export async function updateProject(
   id: number,
-  values: Required<Pick<ProjectFormValues, "name" | "participating_units" | "bid_opening_at">>,
+  values: Required<Pick<ProjectFormValues, "name" | "participating_units">>,
 ): Promise<BiddingProjectDetail> {
   const formData = new FormData();
   formData.append("name", values.name!.trim());
   formData.append("participating_units", values.participating_units!.trim());
-  formData.append("bid_opening_at", dayjs(values.bid_opening_at).format("YYYY-MM-DDTHH:mm:ss"));
   const { data } = await apiClient.patch<BiddingProjectDetail>(`/api/bidding-projects/${id}`, formData, {
     headers: { "Content-Type": "multipart/form-data" },
   });
@@ -90,6 +104,7 @@ export async function updateProject(
 export async function updateGroup(id: number, values: GroupFormValues): Promise<BiddingProjectGroupDetail> {
   const formData = new FormData();
   formData.append("name", values.name.trim());
+  formData.append("bid_opening_at", formatChinaTimeForApi(values.bid_opening_at));
   const { data } = await apiClient.patch<BiddingProjectGroupDetail>(
     `/api/bidding-project-groups/${id}`,
     formData,
@@ -98,13 +113,37 @@ export async function updateGroup(id: number, values: GroupFormValues): Promise<
   return data;
 }
 
-export async function submitFeedback(id: number, values: FeedbackFormValues) {
-  const { data } = await apiClient.post(`/api/bidding-projects/${id}/feedback`, values);
+export async function submitFeedback(companyId: number, values: FeedbackFormValues) {
+  const { data } = await apiClient.post(`/api/bidding-companies/${companyId}/feedback`, values);
+  return data;
+}
+
+export async function fetchCompany(id: number): Promise<BiddingCompanyDetail> {
+  const { data } = await apiClient.get<BiddingCompanyDetail>(`/api/bidding-companies/${id}`);
   return data;
 }
 
 export async function deleteProject(id: number) {
   await apiClient.delete(`/api/bidding-projects/${id}`);
+}
+
+export async function deleteCompany(id: number) {
+  await apiClient.delete(`/api/bidding-companies/${id}`);
+}
+
+export async function deleteBidVersion(id: number) {
+  await apiClient.delete(`/api/bid-versions/${id}`);
+}
+
+export async function updateBidVersionAnalysisStatus(args: {
+  attachmentId: number;
+  analysisStatus: boolean;
+}) {
+  const { data } = await apiClient.patch<{ analysis_status: boolean }>(
+    `/api/bid-versions/${args.attachmentId}/analysis-status`,
+    { analysis_status: args.analysisStatus },
+  );
+  return data;
 }
 
 export function getGroupAttachmentDownloadUrl(groupId: number, attachmentId: number) {
@@ -132,7 +171,6 @@ export async function downloadGroupAttachment(args: {
   document.body.appendChild(link);
   link.click();
   link.remove();
-  // 让浏览器先开始接收/保存文件，避免立即回收导致偶发的下载失败
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 5000);
 }
 
@@ -158,3 +196,9 @@ export async function downloadProjectAttachment(args: {
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 5000);
 }
+
+export async function downloadBidVersion(args: { attachmentId: number; filename: string }) {
+  await downloadBidVersionFile(args);
+}
+
+export { previewBidVersion, getBidVersionPreviewUrl };

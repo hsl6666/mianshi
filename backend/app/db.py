@@ -191,6 +191,399 @@ def _migrate_project_attachments_table() -> None:
         )
 
 
+def _migrate_operation_log_timezone() -> None:
+    """将历史操作日志从 SQLite CURRENT_TIMESTAMP 的 UTC 时间修正为北京时间。"""
+    inspector = inspect(engine)
+    if "operation_logs" not in inspector.get_table_names():
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS app_migrations (
+                    name VARCHAR(128) PRIMARY KEY,
+                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        marker = conn.execute(
+            text("SELECT name FROM app_migrations WHERE name = :name"),
+            {"name": "operation_logs_china_timezone_v1"},
+        ).fetchone()
+        if marker:
+            return
+
+        if settings.database_url.startswith("sqlite"):
+            conn.execute(
+                text(
+                    """
+                    UPDATE operation_logs
+                    SET created_at = datetime(created_at, '+8 hours')
+                    WHERE created_at IS NOT NULL
+                    """
+                )
+            )
+
+        conn.execute(
+            text("INSERT INTO app_migrations (name) VALUES (:name)"),
+            {"name": "operation_logs_china_timezone_v1"},
+        )
+
+
+def _migrate_attachment_timezone() -> None:
+    """将历史附件上传时间从 SQLite CURRENT_TIMESTAMP 的 UTC 时间修正为北京时间。"""
+    inspector = inspect(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS app_migrations (
+                    name VARCHAR(128) PRIMARY KEY,
+                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        marker = conn.execute(
+            text("SELECT name FROM app_migrations WHERE name = :name"),
+            {"name": "attachments_china_timezone_v1"},
+        ).fetchone()
+        if marker:
+            return
+
+        if settings.database_url.startswith("sqlite"):
+            table_names = set(inspector.get_table_names())
+            for table_name in ("group_attachments", "project_attachments"):
+                if table_name in table_names:
+                    conn.execute(
+                        text(
+                            f"""
+                            UPDATE {table_name}
+                            SET created_at = datetime(created_at, '+8 hours')
+                            WHERE created_at IS NOT NULL
+                            """
+                        )
+                    )
+
+        conn.execute(
+            text("INSERT INTO app_migrations (name) VALUES (:name)"),
+            {"name": "attachments_china_timezone_v1"},
+        )
+
+
+def _migrate_bidding_entity_timezone() -> None:
+    """将招投标主表历史时间从 SQLite UTC 修正为北京时间。"""
+    inspector = inspect(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS app_migrations (
+                    name VARCHAR(128) PRIMARY KEY,
+                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        marker = conn.execute(
+            text("SELECT name FROM app_migrations WHERE name = :name"),
+            {"name": "bidding_entities_china_timezone_v1"},
+        ).fetchone()
+        if marker:
+            return
+
+        if settings.database_url.startswith("sqlite"):
+            table_names = set(inspector.get_table_names())
+            targets = [
+                ("bidding_project_groups", ("created_at", "updated_at")),
+                ("bidding_projects", ("created_at", "updated_at")),
+                ("project_feedbacks", ("created_at", "updated_at")),
+                ("users", ("created_at", "updated_at")),
+            ]
+            for table_name, columns in targets:
+                if table_name not in table_names:
+                    continue
+                for column in columns:
+                    conn.execute(
+                        text(
+                            f"""
+                            UPDATE {table_name}
+                            SET {column} = datetime({column}, '+8 hours')
+                            WHERE {column} IS NOT NULL
+                            """
+                        )
+                    )
+
+        conn.execute(
+            text("INSERT INTO app_migrations (name) VALUES (:name)"),
+            {"name": "bidding_entities_china_timezone_v1"},
+        )
+
+
+def _migrate_bidding_companies() -> None:
+    """创建投标单位表，并将历史投标文件迁移到公司维度。"""
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS app_migrations (
+                    name VARCHAR(128) PRIMARY KEY,
+                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        marker = conn.execute(
+            text("SELECT name FROM app_migrations WHERE name = :name"),
+            {"name": "bidding_companies_v1"},
+        ).fetchone()
+        if marker:
+            return
+
+        if "bidding_companies" not in table_names:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE bidding_companies (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        project_id INTEGER NOT NULL,
+                        name VARCHAR(200) NOT NULL,
+                        created_at DATETIME,
+                        updated_at DATETIME,
+                        FOREIGN KEY(project_id) REFERENCES bidding_projects(id) ON DELETE CASCADE
+                    )
+                    """
+                )
+            )
+
+        if "project_attachments" in table_names:
+            columns = {col["name"] for col in inspector.get_columns("project_attachments")}
+            if "company_id" not in columns:
+                conn.execute(
+                    text("ALTER TABLE project_attachments ADD COLUMN company_id INTEGER")
+                )
+
+        if "project_attachments" in table_names and "bidding_companies" in table_names:
+            rows = conn.execute(
+                text(
+                    """
+                    SELECT pa.id, pa.project_id, pa.attachment_type, p.participating_units
+                    FROM project_attachments pa
+                    JOIN bidding_projects p ON p.id = pa.project_id
+                    WHERE pa.company_id IS NULL AND pa.attachment_type = 'bid_doc'
+                    """
+                )
+            ).fetchall()
+            for row in rows:
+                attachment_id, project_id, _attachment_type, participating_units = row
+                company_name = (participating_units or "未命名单位").strip()
+                if not company_name:
+                    company_name = "未命名单位"
+                if len(company_name) > 200:
+                    company_name = company_name[:200]
+                result = conn.execute(
+                    text(
+                        """
+                        INSERT INTO bidding_companies (project_id, name, created_at, updated_at)
+                        VALUES (:project_id, :name, datetime('now', 'localtime'), datetime('now', 'localtime'))
+                        """
+                    ),
+                    {"project_id": project_id, "name": company_name},
+                )
+                company_id = result.lastrowid
+                conn.execute(
+                    text("UPDATE project_attachments SET company_id = :company_id WHERE id = :id"),
+                    {"company_id": company_id, "id": attachment_id},
+                )
+
+        conn.execute(
+            text("INSERT INTO app_migrations (name) VALUES (:name)"),
+            {"name": "bidding_companies_v1"},
+        )
+
+
+def _migrate_bid_version_numbers() -> None:
+    """为投标文件补充版本号。"""
+    inspector = inspect(engine)
+    if "project_attachments" not in inspector.get_table_names():
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS app_migrations (
+                    name VARCHAR(128) PRIMARY KEY,
+                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        marker = conn.execute(
+            text("SELECT name FROM app_migrations WHERE name = :name"),
+            {"name": "bid_version_numbers_v1"},
+        ).fetchone()
+        if marker:
+            return
+
+        columns = {col["name"] for col in inspector.get_columns("project_attachments")}
+        if "version_number" not in columns:
+            conn.execute(text("ALTER TABLE project_attachments ADD COLUMN version_number INTEGER"))
+
+        rows = conn.execute(
+            text(
+                """
+                SELECT id, company_id, created_at
+                FROM project_attachments
+                WHERE attachment_type = 'bid_doc' AND company_id IS NOT NULL
+                ORDER BY company_id ASC, created_at ASC, id ASC
+                """
+            )
+        ).fetchall()
+        version_map: dict[int, int] = {}
+        for attachment_id, company_id, _created_at in rows:
+            version_map[company_id] = version_map.get(company_id, 0) + 1
+            conn.execute(
+                text("UPDATE project_attachments SET version_number = :version WHERE id = :id"),
+                {"version": version_map[company_id], "id": attachment_id},
+            )
+
+        conn.execute(
+            text("INSERT INTO app_migrations (name) VALUES (:name)"),
+            {"name": "bid_version_numbers_v1"},
+        )
+
+
+def _migrate_company_feedbacks() -> None:
+    """将项目级评审反馈迁移到投标单位维度。"""
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS app_migrations (
+                    name VARCHAR(128) PRIMARY KEY,
+                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        marker = conn.execute(
+            text("SELECT name FROM app_migrations WHERE name = :name"),
+            {"name": "company_feedbacks_v1"},
+        ).fetchone()
+        if marker:
+            return
+
+        if "company_feedbacks" not in table_names:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE company_feedbacks (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        company_id INTEGER NOT NULL UNIQUE,
+                        final_score NUMERIC(10, 2) NOT NULL,
+                        ranking INTEGER,
+                        score_detail TEXT,
+                        remark TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY(company_id) REFERENCES bidding_companies(id) ON DELETE CASCADE
+                    )
+                    """
+                )
+            )
+
+        if "project_feedbacks" in table_names:
+            rows = conn.execute(
+                text(
+                    """
+                    SELECT pf.final_score, pf.ranking, pf.score_detail, pf.remark,
+                           pf.created_at, pf.updated_at, bc.id AS company_id
+                    FROM project_feedbacks pf
+                    JOIN bidding_projects bp ON bp.id = pf.project_id
+                    JOIN bidding_companies bc ON bc.project_id = bp.id
+                    WHERE bc.id = (
+                        SELECT MIN(id) FROM bidding_companies WHERE project_id = bp.id
+                    )
+                    """
+                )
+            ).fetchall()
+            for row in rows:
+                conn.execute(
+                    text(
+                        """
+                        INSERT OR IGNORE INTO company_feedbacks
+                        (company_id, final_score, ranking, score_detail, remark, created_at, updated_at)
+                        VALUES (:company_id, :final_score, :ranking, :score_detail, :remark, :created_at, :updated_at)
+                        """
+                    ),
+                    {
+                        "company_id": row.company_id,
+                        "final_score": row.final_score,
+                        "ranking": row.ranking,
+                        "score_detail": row.score_detail,
+                        "remark": row.remark,
+                        "created_at": row.created_at,
+                        "updated_at": row.updated_at,
+                    },
+                )
+            conn.execute(text("DROP TABLE project_feedbacks"))
+
+        conn.execute(
+            text("INSERT INTO app_migrations (name) VALUES (:name)"),
+            {"name": "company_feedbacks_v1"},
+        )
+
+
+def _migrate_bid_analysis_status() -> None:
+    """为投标文件补充分析状态字段。"""
+    inspector = inspect(engine)
+    if "project_attachments" not in inspector.get_table_names():
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS app_migrations (
+                    name VARCHAR(128) PRIMARY KEY,
+                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        marker = conn.execute(
+            text("SELECT name FROM app_migrations WHERE name = :name"),
+            {"name": "bid_analysis_status_v1"},
+        ).fetchone()
+        if marker:
+            return
+
+        columns = {col["name"] for col in inspector.get_columns("project_attachments")}
+        if "analysis_status" not in columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE project_attachments "
+                    "ADD COLUMN analysis_status BOOLEAN NOT NULL DEFAULT 0"
+                )
+            )
+
+        conn.execute(
+            text("INSERT INTO app_migrations (name) VALUES (:name)"),
+            {"name": "bid_analysis_status_v1"},
+        )
+
+
 def init_db() -> None:
     from app import models  # noqa: F401
 
@@ -198,4 +591,11 @@ def init_db() -> None:
     _migrate_legacy_projects()
     _migrate_owner_column()
     _migrate_project_attachments_table()
+    _migrate_bidding_companies()
+    _migrate_bid_version_numbers()
+    _migrate_company_feedbacks()
+    _migrate_bid_analysis_status()
+    _migrate_operation_log_timezone()
+    _migrate_attachment_timezone()
+    _migrate_bidding_entity_timezone()
     _seed_users()
