@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Reques
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_client_ip, get_current_user
+from app.api.deps import get_client_ip, get_current_user, require_super_admin
 from app.core.security import CurrentUser
 from app.core.config import get_settings
 from app.db import get_db
@@ -21,6 +21,7 @@ from app.schemas import (
     ProjectDetail,
     ProjectFormOptions,
     ProjectListItem,
+    ProjectThirdPartySyncStatusUpdate,
     ProjectUpdate,
 )
 from app.services import bidding_companies as company_service
@@ -75,6 +76,7 @@ def _to_project_item(project: BiddingProject) -> ProjectListItem:
         participating_units=participating,
         bid_opening_at=project.bid_opening_at,
         status=project.status,
+        third_party_sync_status=project.third_party_sync_status,
         created_at=project.created_at,
         updated_at=project.updated_at,
         final_score=None,
@@ -86,7 +88,7 @@ def _to_project_item(project: BiddingProject) -> ProjectListItem:
 
 
 def _count_group_attachments(group) -> int:
-    total = 0
+    total = len(group.attachments)
     for project in group.projects:
         total += len(service.tender_attachments(project))
         for company in project.companies:
@@ -103,6 +105,7 @@ def _to_group_tree_item(group) -> GroupTreeItem:
         created_at=group.created_at,
         updated_at=group.updated_at,
         attachment_count=_count_group_attachments(group),
+        attachments=group.attachments,
         children=[_to_project_item(child) for child in children],
     )
 
@@ -118,6 +121,7 @@ def _to_detail(project: BiddingProject) -> ProjectDetail:
         participating_units=participating,
         bid_opening_at=project.bid_opening_at,
         status=project.status,
+        third_party_sync_status=project.third_party_sync_status,
         created_at=project.created_at,
         updated_at=project.updated_at,
         attachments=service.tender_attachments(project),
@@ -385,6 +389,37 @@ async def update_bidding_project(
         ip_address=get_client_ip(request),
     )
     return _to_detail(project)
+
+
+@router.patch("/{project_id}/third-party-sync-status", response_model=ProjectThirdPartySyncStatusUpdate)
+def update_project_third_party_sync_status(
+    project_id: int,
+    payload: ProjectThirdPartySyncStatusUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_super_admin),
+) -> ProjectThirdPartySyncStatusUpdate:
+    project = service.get_project(db, project_id, current_user.owner_filter)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project does not exist")
+
+    service.update_third_party_sync_status(
+        db,
+        project,
+        third_party_sync_status=payload.third_party_sync_status,
+    )
+    status_label = payload.third_party_sync_status.value
+    log_service.record_log(
+        db,
+        username=current_user.username,
+        action="update",
+        module="bidding",
+        resource_type="project",
+        resource_id=project.id,
+        summary=f"Update project {project.name} third-party sync status -> {status_label}",
+        ip_address=get_client_ip(request),
+    )
+    return payload
 
 
 @router.delete("/{project_id}", status_code=204)

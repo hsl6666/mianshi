@@ -17,6 +17,11 @@ class ProjectStatus(str, enum.Enum):
     completed = "completed"
 
 
+class ThirdPartySyncStatus(str, enum.Enum):
+    unsynced = "unsynced"
+    synced = "synced"
+
+
 class AttachmentType(str, enum.Enum):
     tender_doc = "tender_doc"
     bid_doc = "bid_doc"
@@ -176,6 +181,11 @@ class BiddingProject(Base):
     status: Mapped[ProjectStatus] = mapped_column(
         Enum(ProjectStatus),
         default=ProjectStatus.registered,
+        nullable=False,
+    )
+    third_party_sync_status: Mapped[ThirdPartySyncStatus] = mapped_column(
+        Enum(ThirdPartySyncStatus),
+        default=ThirdPartySyncStatus.unsynced,
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=china_now)

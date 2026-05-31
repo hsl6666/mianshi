@@ -25,6 +25,7 @@ import {
   FolderOutlined,
   HistoryOutlined,
   PlusOutlined,
+  SyncOutlined,
 } from "@ant-design/icons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useAuthStore } from "@/store/authStore";
@@ -35,6 +36,8 @@ import {
   deleteCompany,
   deleteProject,
   downloadBidVersion,
+  downloadGroupAttachment,
+  downloadProjectAttachment,
   fetchCompany,
   fetchProject,
   fetchProjects,
@@ -43,6 +46,7 @@ import {
   updateGroup,
   updateProject,
   updateBidVersionAnalysisStatus,
+  updateProjectThirdPartySyncStatus,
 } from "../api";
 import AnalysisStatusSwitch from "../components/AnalysisStatusSwitch";
 import FeedbackModal from "../components/FeedbackModal";
@@ -52,7 +56,7 @@ import GroupFormModal from "../components/GroupFormModal";
 import ProjectDetailDrawer from "../components/ProjectDetailDrawer";
 import ProjectFormModal from "../components/ProjectFormModal";
 import ProjectMobileCardList from "../components/ProjectMobileCardList";
-import { PROJECT_STATUS_MAP } from "../constants";
+import { PROJECT_STATUS_MAP, THIRD_PARTY_SYNC_STATUS_MAP } from "../constants";
 import type {
   BidVersionListItem,
   BiddingCompanyListItem,
@@ -66,10 +70,31 @@ import type {
   ProjectRevisionPreset,
   ProjectStatus,
   ProjectTreeRow,
+  ThirdPartySyncStatus,
 } from "../types";
 
 function rowKey(record: ProjectTreeRow) {
   return `${record.row_type}-${record.id}`;
+}
+
+function getGroupTenderFile(group: BiddingProjectGroupTreeItem) {
+  const groupTender = group.attachments.find((file) => file.attachment_type === "tender_doc");
+  if (groupTender) {
+    return { source: "group" as const, groupId: group.id, attachment: groupTender };
+  }
+
+  for (const project of group.children) {
+    const projectTender = project.attachments.find((file) => file.attachment_type === "tender_doc");
+    if (projectTender) {
+      return {
+        source: "project" as const,
+        projectId: project.id,
+        attachment: projectTender,
+      };
+    }
+  }
+
+  return null;
 }
 
 export default function ProjectListPage() {
@@ -287,6 +312,32 @@ export default function ProjectListPage() {
     }
   };
 
+  const handleDownloadGroupTender = async (group: BiddingProjectGroupTreeItem) => {
+    const tenderFile = getGroupTenderFile(group);
+    if (!tenderFile) {
+      message.warning("暂无招标文件可下载");
+      return;
+    }
+
+    try {
+      if (tenderFile.source === "group") {
+        await downloadGroupAttachment({
+          groupId: tenderFile.groupId,
+          attachmentId: tenderFile.attachment.id,
+          filename: tenderFile.attachment.original_name,
+        });
+      } else {
+        await downloadProjectAttachment({
+          projectId: tenderFile.projectId,
+          attachmentId: tenderFile.attachment.id,
+          filename: tenderFile.attachment.original_name,
+        });
+      }
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "下载招标文件失败");
+    }
+  };
+
   const handlePreviewVersion = async (record: BidVersionListItem) => {
     await previewBidVersion({ attachmentId: record.id, filename: record.original_name });
   };
@@ -320,6 +371,22 @@ export default function ProjectListPage() {
     }
   };
 
+  const handleThirdPartySyncStatusChange = async (
+    record: BiddingProjectListItem,
+    thirdPartySyncStatus: ThirdPartySyncStatus,
+  ) => {
+    try {
+      await updateProjectThirdPartySyncStatus({
+        projectId: record.id,
+        thirdPartySyncStatus,
+      });
+      message.success(thirdPartySyncStatus === "synced" ? "已标记为已同步" : "已标记为未同步");
+      await loadList();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "更新三方对接状态失败");
+    }
+  };
+
   const handleDeleteCompany = async (id: number) => {
     try {
       await deleteCompany(id);
@@ -337,21 +404,35 @@ export default function ProjectListPage() {
     return null;
   };
 
-  const renderProjectActions = (record: BiddingProjectListItem) => (
-    <Space size={4} wrap>
-      <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => openDetail(record.id)}>
-        详情
-      </Button>
-      <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEdit(record.id)}>
-        编辑
-      </Button>
-      <Popconfirm title="确定删除该项目？" onConfirm={() => handleDelete(record.id)}>
-        <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-          删除
+  const renderProjectActions = (record: BiddingProjectListItem) => {
+    const nextSyncStatus: ThirdPartySyncStatus =
+      record.third_party_sync_status === "synced" ? "unsynced" : "synced";
+    return (
+      <Space size={4} wrap>
+        <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => openDetail(record.id)}>
+          详情
         </Button>
-      </Popconfirm>
-    </Space>
-  );
+        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEdit(record.id)}>
+          编辑
+        </Button>
+        {isSuperAdmin && (
+          <Button
+            type="link"
+            size="small"
+            icon={<SyncOutlined />}
+            onClick={() => handleThirdPartySyncStatusChange(record, nextSyncStatus)}
+          >
+            {nextSyncStatus === "synced" ? "标为已同步" : "标为未同步"}
+          </Button>
+        )}
+        <Popconfirm title="确定删除该项目？" onConfirm={() => handleDelete(record.id)}>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+            删除
+          </Button>
+        </Popconfirm>
+      </Space>
+    );
+  };
 
   const renderCompanyActions = (record: BiddingCompanyListItem, project: BiddingProjectListItem) => {
     const groupId = findGroupIdForProject(record.project_id);
@@ -531,6 +612,22 @@ export default function ProjectListPage() {
       },
     },
     {
+      title: "三方对接",
+      key: "third_party_sync_status",
+      width: 110,
+      render: (_, record) => {
+        if (record.row_type !== "project") {
+          return <EllipsisTooltip title="-">-</EllipsisTooltip>;
+        }
+        const meta = THIRD_PARTY_SYNC_STATUS_MAP[record.third_party_sync_status ?? "unsynced"];
+        return (
+          <EllipsisTooltip title={meta.label}>
+            <Tag color={meta.color}>{meta.label}</Tag>
+          </EllipsisTooltip>
+        );
+      },
+    },
+    {
       title: "最终得分",
       key: "final_score",
       width: 100,
@@ -564,11 +661,21 @@ export default function ProjectListPage() {
       title: "操作",
       key: "actions",
       fixed: "right",
-      width: 300,
+      width: 380,
       render: (_, record) => {
         if (record.row_type === "group") {
+          const tenderFile = getGroupTenderFile(record);
           return (
             <Space size={4} wrap>
+              <Button
+                type="link"
+                size="small"
+                icon={<DownloadOutlined />}
+                disabled={!tenderFile}
+                onClick={() => handleDownloadGroupTender(record)}
+              >
+                下载招标文件
+              </Button>
               <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEditGroup(record)}>
                 编辑组
               </Button>
@@ -673,12 +780,14 @@ export default function ProjectListPage() {
               onFeedback={openFeedback}
               onDelete={handleDelete}
               onEditGroup={openEditGroup}
+              onDownloadGroupTender={handleDownloadGroupTender}
               onAddProject={openCreate}
               onUploadRevision={(groupId, project, company) => openUploadRevision(groupId, project, company)}
               onDeleteCompany={handleDeleteCompany}
               onPreviewVersion={handlePreviewVersion}
               onDownloadVersion={handleDownloadVersion}
               onAnalysisStatusChange={handleAnalysisStatusChange}
+              onThirdPartySyncStatusChange={handleThirdPartySyncStatusChange}
               isSuperAdmin={isSuperAdmin}
               onDeleteVersion={handleDeleteBidVersion}
             />
@@ -695,7 +804,7 @@ export default function ProjectListPage() {
               expandedRowKeys,
               onExpandedRowsChange: (keys) => setExpandedRowKeys([...keys]),
             }}
-            scroll={{ x: 1210 }}
+            scroll={{ x: 1400 }}
             pagination={{
               current: page,
               pageSize,

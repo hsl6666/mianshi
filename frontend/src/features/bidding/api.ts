@@ -10,6 +10,7 @@ import type {
   PaginatedProjectTree,
   ProjectFormOptions,
   ProjectFormValues,
+  ThirdPartySyncStatus,
 } from "./types";
 import { downloadBidVersionFile, getBidVersionPreviewUrl, previewBidVersion } from "./utils/filePreview";
 
@@ -142,6 +143,17 @@ export async function updateBidVersionAnalysisStatus(args: {
   const { data } = await apiClient.patch<{ analysis_status: boolean }>(
     `/api/bid-versions/${args.attachmentId}/analysis-status`,
     { analysis_status: args.analysisStatus },
+  );
+  return data;
+}
+
+export async function updateProjectThirdPartySyncStatus(args: {
+  projectId: number;
+  thirdPartySyncStatus: ThirdPartySyncStatus;
+}) {
+  const { data } = await apiClient.patch<{ third_party_sync_status: ThirdPartySyncStatus }>(
+    `/api/bidding-projects/${args.projectId}/third-party-sync-status`,
+    { third_party_sync_status: args.thirdPartySyncStatus },
   );
   return data;
 }

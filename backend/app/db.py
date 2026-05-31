@@ -584,6 +584,52 @@ def _migrate_bid_analysis_status() -> None:
         )
 
 
+def _migrate_third_party_sync_status() -> None:
+    """Add third-party sync status to bidding projects."""
+    inspector = inspect(engine)
+    if "bidding_projects" not in inspector.get_table_names():
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS app_migrations (
+                    name VARCHAR(128) PRIMARY KEY,
+                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        marker = conn.execute(
+            text("SELECT name FROM app_migrations WHERE name = :name"),
+            {"name": "third_party_sync_status_v1"},
+        ).fetchone()
+        if marker:
+            return
+
+        columns = {col["name"] for col in inspector.get_columns("bidding_projects")}
+        if "third_party_sync_status" not in columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE bidding_projects "
+                    "ADD COLUMN third_party_sync_status VARCHAR(32) NOT NULL DEFAULT 'unsynced'"
+                )
+            )
+        conn.execute(
+            text(
+                "UPDATE bidding_projects "
+                "SET third_party_sync_status = 'unsynced' "
+                "WHERE third_party_sync_status IS NULL"
+            )
+        )
+
+        conn.execute(
+            text("INSERT INTO app_migrations (name) VALUES (:name)"),
+            {"name": "third_party_sync_status_v1"},
+        )
+
+
 def init_db() -> None:
     from app import models  # noqa: F401
 
@@ -595,6 +641,7 @@ def init_db() -> None:
     _migrate_bid_version_numbers()
     _migrate_company_feedbacks()
     _migrate_bid_analysis_status()
+    _migrate_third_party_sync_status()
     _migrate_operation_log_timezone()
     _migrate_attachment_timezone()
     _migrate_bidding_entity_timezone()

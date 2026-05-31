@@ -14,6 +14,7 @@ from app.models import (
     BiddingProjectGroup,
     ProjectAttachment,
     ProjectStatus,
+    ThirdPartySyncStatus,
 )
 
 
@@ -109,6 +110,7 @@ def list_project_tree(
         select(BiddingProjectGroup)
         .where(*group_filters)
         .options(
+            selectinload(BiddingProjectGroup.attachments),
             selectinload(BiddingProjectGroup.projects).selectinload(BiddingProject.attachments),
             selectinload(BiddingProjectGroup.projects)
             .selectinload(BiddingProject.companies)
@@ -175,6 +177,49 @@ def get_project(db: Session, project_id: int, owner: str | None = None) -> Biddi
     if project:
         sync_project_status(project)
         db.commit()
+    return project
+
+
+def get_next_unsynced_project(db: Session) -> BiddingProject | None:
+    tender_project_ids = select(ProjectAttachment.project_id).where(
+        ProjectAttachment.attachment_type == AttachmentType.tender_doc,
+        ProjectAttachment.company_id.is_(None),
+    )
+    query = (
+        select(BiddingProject)
+        .where(
+            BiddingProject.third_party_sync_status == ThirdPartySyncStatus.unsynced,
+            BiddingProject.id.in_(tender_project_ids),
+        )
+        .options(
+            selectinload(BiddingProject.group),
+            selectinload(BiddingProject.attachments),
+            selectinload(BiddingProject.companies).selectinload(BiddingCompany.attachments),
+        )
+        .order_by(BiddingProject.created_at.asc(), BiddingProject.id.asc())
+        .limit(1)
+    )
+    return db.scalar(query)
+
+
+def mark_third_party_synced(db: Session, project: BiddingProject) -> BiddingProject:
+    project.third_party_sync_status = ThirdPartySyncStatus.synced
+    project.updated_at = china_now()
+    db.commit()
+    db.refresh(project)
+    return project
+
+
+def update_third_party_sync_status(
+    db: Session,
+    project: BiddingProject,
+    *,
+    third_party_sync_status: ThirdPartySyncStatus,
+) -> BiddingProject:
+    project.third_party_sync_status = third_party_sync_status
+    project.updated_at = china_now()
+    db.commit()
+    db.refresh(project)
     return project
 
 

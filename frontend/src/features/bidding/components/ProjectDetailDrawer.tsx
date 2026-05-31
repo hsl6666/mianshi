@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Descriptions, Divider, Drawer, Space, Tag, Typography, message } from "antd";
 import { formatChinaTime } from "@/utils/date";
 import { useResponsiveOverlay } from "@/hooks/useResponsiveOverlay";
-import { ATTACHMENT_TYPE_MAP, PROJECT_STATUS_MAP } from "../constants";
+import { ATTACHMENT_TYPE_MAP, PROJECT_STATUS_MAP, THIRD_PARTY_SYNC_STATUS_MAP } from "../constants";
 import { downloadProjectAttachment, updateBidVersionAnalysisStatus } from "../api";
 import AnalysisStatusSwitch from "./AnalysisStatusSwitch";
 import BidFilePreviewLink from "./BidFilePreviewLink";
@@ -38,6 +38,7 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
   if (!project) return null;
 
   const statusMeta = PROJECT_STATUS_MAP[project.status];
+  const syncMeta = THIRD_PARTY_SYNC_STATUS_MAP[project.third_party_sync_status ?? "unsynced"];
 
   const handleProjectDownload = async (attachmentId: number, filename: string) => {
     try {
@@ -76,6 +77,9 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
         </Descriptions.Item>
         <Descriptions.Item label="状态">
           <Tag color={statusMeta.color}>{statusMeta.label}</Tag>
+        </Descriptions.Item>
+        <Descriptions.Item label="三方对接">
+          <Tag color={syncMeta.color}>{syncMeta.label}</Tag>
         </Descriptions.Item>
         <Descriptions.Item label="参加单位">
           <EllipsisTooltip

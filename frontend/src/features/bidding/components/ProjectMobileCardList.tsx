@@ -11,16 +11,18 @@ import {
   FolderOutlined,
   HistoryOutlined,
   PlusOutlined,
+  SyncOutlined,
 } from "@ant-design/icons";
 import BidFilePreviewLink from "./BidFilePreviewLink";
 import AnalysisStatusSwitch from "./AnalysisStatusSwitch";
 import EllipsisTooltip from "./EllipsisTooltip";
-import { PROJECT_STATUS_MAP } from "../constants";
+import { PROJECT_STATUS_MAP, THIRD_PARTY_SYNC_STATUS_MAP } from "../constants";
 import type {
   BidVersionListItem,
   BiddingCompanyListItem,
   BiddingProjectGroupTreeItem,
   BiddingProjectListItem,
+  ThirdPartySyncStatus,
 } from "../types";
 
 interface ProjectMobileCardListProps {
@@ -31,6 +33,7 @@ interface ProjectMobileCardListProps {
   onFeedback: (company: BiddingCompanyListItem, project: BiddingProjectListItem) => void;
   onDelete: (id: number) => void;
   onEditGroup: (group: BiddingProjectGroupTreeItem) => void;
+  onDownloadGroupTender: (group: BiddingProjectGroupTreeItem) => void;
   onAddProject: (groupId: number) => void;
   onUploadRevision: (
     groupId: number,
@@ -41,6 +44,10 @@ interface ProjectMobileCardListProps {
   onPreviewVersion: (record: BidVersionListItem) => void;
   onDownloadVersion: (record: BidVersionListItem) => void;
   onAnalysisStatusChange: (record: BidVersionListItem, analysisStatus: boolean) => void;
+  onThirdPartySyncStatusChange: (
+    record: BiddingProjectListItem,
+    thirdPartySyncStatus: ThirdPartySyncStatus,
+  ) => void;
   isSuperAdmin: boolean;
   onDeleteVersion: (id: number) => void;
 }
@@ -53,12 +60,14 @@ export default function ProjectMobileCardList({
   onFeedback,
   onDelete,
   onEditGroup,
+  onDownloadGroupTender,
   onAddProject,
   onUploadRevision,
   onDeleteCompany,
   onPreviewVersion,
   onDownloadVersion,
   onAnalysisStatusChange,
+  onThirdPartySyncStatusChange,
   isSuperAdmin,
   onDeleteVersion,
 }: ProjectMobileCardListProps) {
@@ -102,6 +111,20 @@ export default function ProjectMobileCardList({
         ),
         extra: (
           <Space size={4} onClick={(e) => e.stopPropagation()}>
+            <Button
+              type="link"
+              size="small"
+              icon={<DownloadOutlined />}
+              disabled={
+                !group.attachments.some((file) => file.attachment_type === "tender_doc") &&
+                !group.children.some((project) =>
+                  project.attachments.some((file) => file.attachment_type === "tender_doc"),
+                )
+              }
+              onClick={() => onDownloadGroupTender(group)}
+            >
+              下载招标文件
+            </Button>
             <Button type="link" size="small" onClick={() => onEditGroup(group)}>
               编辑组
             </Button>
@@ -117,6 +140,9 @@ export default function ProjectMobileCardList({
             <div className="flex flex-col gap-3">
               {group.children.map((record) => {
                 const statusMeta = PROJECT_STATUS_MAP[record.status];
+                const syncMeta = THIRD_PARTY_SYNC_STATUS_MAP[record.third_party_sync_status ?? "unsynced"];
+                const nextSyncStatus: ThirdPartySyncStatus =
+                  record.third_party_sync_status === "synced" ? "unsynced" : "synced";
                 return (
                   <Card key={record.id} size="small" className="shadow-sm">
                     <div className="flex items-start justify-between gap-2 mb-2">
@@ -138,9 +164,14 @@ export default function ProjectMobileCardList({
                           </div>
                         </EllipsisTooltip>
                       </div>
-                      <Tag color={statusMeta.color} className="shrink-0 m-0">
-                        {statusMeta.label}
-                      </Tag>
+                      <Space size={4} className="shrink-0">
+                        <Tag color={statusMeta.color} className="m-0">
+                          {statusMeta.label}
+                        </Tag>
+                        <Tag color={syncMeta.color} className="m-0">
+                          {syncMeta.label}
+                        </Tag>
+                      </Space>
                     </div>
 
                     {record.children.length > 0 && (
@@ -223,6 +254,15 @@ export default function ProjectMobileCardList({
                       <Button size="small" icon={<EditOutlined />} onClick={() => onEdit(record.id)}>
                         编辑
                       </Button>
+                      {isSuperAdmin && (
+                        <Button
+                          size="small"
+                          icon={<SyncOutlined />}
+                          onClick={() => onThirdPartySyncStatusChange(record, nextSyncStatus)}
+                        >
+                          {nextSyncStatus === "synced" ? "标为已同步" : "标为未同步"}
+                        </Button>
+                      )}
                       <Popconfirm title="确定删除该项目？" onConfirm={() => onDelete(record.id)}>
                         <Button size="small" danger icon={<DeleteOutlined />}>
                           删除

@@ -3,7 +3,7 @@ from typing import List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
-from app.models import AttachmentType, ProjectStatus, UserRole
+from app.models import AttachmentType, ProjectStatus, ThirdPartySyncStatus, UserRole
 
 
 class AttachmentOut(BaseModel):
@@ -102,6 +102,7 @@ class ProjectListItem(BaseModel):
     participating_units: str
     bid_opening_at: datetime
     status: ProjectStatus
+    third_party_sync_status: ThirdPartySyncStatus = ThirdPartySyncStatus.unsynced
     created_at: datetime
     updated_at: datetime
     final_score: Optional[float] = None
@@ -121,6 +122,7 @@ class GroupTreeItem(BaseModel):
     created_at: datetime
     updated_at: datetime
     attachment_count: int = 0
+    attachments: List[AttachmentOut] = []
     children: List[ProjectListItem] = []
 
     model_config = {"from_attributes": True}
@@ -149,6 +151,7 @@ class ProjectDetail(BaseModel):
     participating_units: str
     bid_opening_at: datetime
     status: ProjectStatus
+    third_party_sync_status: ThirdPartySyncStatus = ThirdPartySyncStatus.unsynced
     created_at: datetime
     updated_at: datetime
     attachments: List[AttachmentOut] = []
@@ -185,6 +188,10 @@ class BidVersionAnalysisUpdate(BaseModel):
     analysis_status: bool
 
 
+class ProjectThirdPartySyncStatusUpdate(BaseModel):
+    third_party_sync_status: ThirdPartySyncStatus
+
+
 class FeedbackCreate(BaseModel):
     final_score: float = Field(ge=0, le=100)
     ranking: Optional[int] = Field(default=None, ge=1)
@@ -197,6 +204,32 @@ class PaginatedProjectTree(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class ThirdPartyFileOut(BaseModel):
+    id: int
+    project_id: int
+    original_name: str
+    size_bytes: int
+    download_url: str
+
+
+class ThirdPartyBidFileOut(ThirdPartyFileOut):
+    company_id: int
+    company_name: str
+    version_number: int
+
+
+class ThirdPartyBiddingFileInfo(BaseModel):
+    project_id: int
+    group_id: int
+    group_name: str
+    project_name: str
+    participating_units: str
+    bid_opening_at: datetime
+    third_party_sync_status: ThirdPartySyncStatus
+    tender_file: ThirdPartyFileOut
+    bid_files: List[ThirdPartyBidFileOut] = []
 
 
 class LoginRequest(BaseModel):

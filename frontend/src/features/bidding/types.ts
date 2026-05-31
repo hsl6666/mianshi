@@ -1,5 +1,7 @@
 export type ProjectStatus = "registered" | "awaiting_feedback" | "completed";
 
+export type ThirdPartySyncStatus = "unsynced" | "synced";
+
 export type AttachmentType = "tender_doc" | "bid_doc";
 
 export type RowType = "group" | "project" | "company" | "version";
@@ -88,6 +90,7 @@ export interface BiddingProjectListItem {
   participating_units: string;
   bid_opening_at: string;
   status: ProjectStatus;
+  third_party_sync_status: ThirdPartySyncStatus;
   created_at: string;
   updated_at: string;
   final_score: number | null;
@@ -105,6 +108,7 @@ export interface BiddingProjectGroupTreeItem {
   created_at: string;
   updated_at: string;
   attachment_count: number;
+  attachments: ProjectAttachment[];
   children: BiddingProjectListItem[];
 }
 
@@ -122,6 +126,7 @@ export interface BiddingProjectDetail {
   participating_units: string;
   bid_opening_at: string;
   status: ProjectStatus;
+  third_party_sync_status: ThirdPartySyncStatus;
   created_at: string;
   updated_at: string;
   attachments: ProjectAttachment[];
