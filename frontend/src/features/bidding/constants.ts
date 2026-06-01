@@ -22,4 +22,12 @@ export const THIRD_PARTY_SYNC_STATUS_MAP: Record<
   synced: { label: "已同步", color: "success" },
 };
 
+export const REPORT_STATUS_MAP: Record<
+  "pending" | "uploaded",
+  { label: string; color: "default" | "success" }
+> = {
+  pending: { label: "未上传", color: "default" },
+  uploaded: { label: "已上传", color: "success" },
+};
+
 export const ACCEPTED_FILE_TYPES = ".pdf,.doc,.docx,.xls,.xlsx,.zip,.rar,.7z";

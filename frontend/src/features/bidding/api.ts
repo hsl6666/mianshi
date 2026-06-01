@@ -8,6 +8,7 @@ import type {
   FeedbackFormValues,
   GroupFormValues,
   PaginatedProjectTree,
+  ProjectAttachment,
   ProjectFormOptions,
   ProjectFormValues,
   ThirdPartySyncStatus,
@@ -147,13 +148,27 @@ export async function updateBidVersionAnalysisStatus(args: {
   return data;
 }
 
-export async function updateProjectThirdPartySyncStatus(args: {
-  projectId: number;
+export async function updateBidVersionThirdPartySyncStatus(args: {
+  attachmentId: number;
   thirdPartySyncStatus: ThirdPartySyncStatus;
 }) {
   const { data } = await apiClient.patch<{ third_party_sync_status: ThirdPartySyncStatus }>(
-    `/api/bidding-projects/${args.projectId}/third-party-sync-status`,
+    `/api/bid-versions/${args.attachmentId}/third-party-sync-status`,
     { third_party_sync_status: args.thirdPartySyncStatus },
+  );
+  return data;
+}
+
+export async function uploadBidVersionReport(args: {
+  attachmentId: number;
+  file: File;
+}): Promise<ProjectAttachment> {
+  const formData = new FormData();
+  formData.append("report_file", args.file);
+  const { data } = await apiClient.post<ProjectAttachment>(
+    `/api/bid-versions/${args.attachmentId}/report`,
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" } },
   );
   return data;
 }
@@ -211,6 +226,25 @@ export async function downloadProjectAttachment(args: {
 
 export async function downloadBidVersion(args: { attachmentId: number; filename: string }) {
   await downloadBidVersionFile(args);
+}
+
+export async function downloadBidVersionReport(args: { attachmentId: number; filename: string }) {
+  const { attachmentId, filename } = args;
+  const response = await apiClient.get<Blob>(`/api/bid-versions/${attachmentId}/report/download`, {
+    responseType: "blob",
+  });
+  const blob = response.data;
+  const contentType = blob?.type || "application/octet-stream";
+  const finalBlob = blob instanceof Blob ? new Blob([blob], { type: contentType }) : blob;
+
+  const objectUrl = URL.createObjectURL(finalBlob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 5000);
 }
 
 export { previewBidVersion, getBidVersionPreviewUrl };

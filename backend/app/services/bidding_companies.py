@@ -13,6 +13,7 @@ from app.models import (
     CompanyFeedback,
     ProjectAttachment,
     ProjectStatus,
+    ThirdPartySyncStatus,
 )
 from app.services.bidding_projects import company_status, sync_project_status
 
@@ -124,6 +125,10 @@ def delete_bid_version(db: Session, attachment: ProjectAttachment) -> None:
     file_path = settings.uploads_dir / attachment.stored_name
     if file_path.exists():
         file_path.unlink()
+    if attachment.report_stored_name:
+        report_path = settings.uploads_dir / attachment.report_stored_name
+        if report_path.exists():
+            report_path.unlink()
     company = attachment.company
     db.delete(attachment)
     db.flush()
@@ -141,6 +146,57 @@ def update_bid_analysis_status(
     attachment.analysis_status = analysis_status
     if attachment.company:
         attachment.company.updated_at = china_now()
+    db.commit()
+    db.refresh(attachment)
+    return attachment
+
+
+def update_bid_third_party_sync_status(
+    db: Session,
+    attachment: ProjectAttachment,
+    *,
+    third_party_sync_status: ThirdPartySyncStatus,
+) -> ProjectAttachment:
+    attachment.third_party_sync_status = third_party_sync_status
+    if attachment.company:
+        attachment.company.updated_at = china_now()
+    db.commit()
+    db.refresh(attachment)
+    return attachment
+
+
+def mark_bid_attachments_synced(db: Session, attachments: list[ProjectAttachment]) -> None:
+    now = china_now()
+    for attachment in attachments:
+        attachment.third_party_sync_status = ThirdPartySyncStatus.synced
+        if attachment.company:
+            attachment.company.updated_at = now
+    db.commit()
+
+
+def replace_bid_report(
+    db: Session,
+    attachment: ProjectAttachment,
+    *,
+    original_name: str,
+    stored_name: str,
+    size_bytes: int,
+    content_type: str | None,
+) -> ProjectAttachment:
+    settings = get_settings()
+    if attachment.report_stored_name:
+        old_path = settings.uploads_dir / attachment.report_stored_name
+        if old_path.exists():
+            old_path.unlink()
+
+    now = china_now()
+    attachment.report_original_name = original_name
+    attachment.report_stored_name = stored_name
+    attachment.report_size_bytes = size_bytes
+    attachment.report_content_type = content_type
+    attachment.report_uploaded_at = now
+    if attachment.company:
+        attachment.company.updated_at = now
     db.commit()
     db.refresh(attachment)
     return attachment

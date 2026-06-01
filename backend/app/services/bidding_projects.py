@@ -185,11 +185,20 @@ def get_next_unsynced_project(db: Session) -> BiddingProject | None:
         ProjectAttachment.attachment_type == AttachmentType.tender_doc,
         ProjectAttachment.company_id.is_(None),
     )
+    unsynced_project_ids = (
+        select(BiddingCompany.project_id)
+        .join(ProjectAttachment, ProjectAttachment.company_id == BiddingCompany.id)
+        .where(
+            ProjectAttachment.attachment_type == AttachmentType.bid_doc,
+            ProjectAttachment.third_party_sync_status == ThirdPartySyncStatus.unsynced,
+        )
+        .distinct()
+    )
     query = (
         select(BiddingProject)
         .where(
-            BiddingProject.third_party_sync_status == ThirdPartySyncStatus.unsynced,
             BiddingProject.id.in_(tender_project_ids),
+            BiddingProject.id.in_(unsynced_project_ids),
         )
         .options(
             selectinload(BiddingProject.group),

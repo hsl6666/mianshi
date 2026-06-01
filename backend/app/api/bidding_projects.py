@@ -28,7 +28,7 @@ from app.services import bidding_companies as company_service
 from app.services import bidding_project_groups as group_service
 from app.services import bidding_projects as service
 from app.services import operation_logs as log_service
-from app.services.files import save_upload
+from app.services.files import is_likely_report_file, save_upload
 
 router = APIRouter(
     prefix="/api/bidding-projects",
@@ -59,6 +59,10 @@ def _to_company_item(company, project: BiddingProject) -> CompanyListItem:
                 original_name=attachment.original_name,
                 size_bytes=attachment.size_bytes,
                 analysis_status=attachment.analysis_status,
+                third_party_sync_status=attachment.third_party_sync_status,
+                report_original_name=attachment.report_original_name,
+                report_size_bytes=attachment.report_size_bytes,
+                report_uploaded_at=attachment.report_uploaded_at,
                 created_at=attachment.created_at,
             )
             for attachment in versions
@@ -221,6 +225,8 @@ async def create_bidding_project(
 
     if not bid_doc or not bid_doc.filename:
         raise HTTPException(status_code=400, detail="请上传投标文件")
+    if is_likely_report_file(bid_doc.filename):
+        raise HTTPException(status_code=400, detail="检测到报告文件，请在投标文件行使用“上传报告”")
 
     is_new_group = payload.group_id is None
 

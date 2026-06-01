@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db import get_db
-from app.models import AttachmentType, ProjectAttachment
+from app.models import AttachmentType, ProjectAttachment, ThirdPartySyncStatus
 from app.schemas import ThirdPartyBiddingFileInfo, ThirdPartyBidFileOut, ThirdPartyFileOut
 from app.services import bidding_companies as company_service
 from app.services import bidding_projects as project_service
@@ -44,9 +44,10 @@ def get_bidding_file_basic_info(
         attachment
         for company in sorted(project.companies, key=lambda c: c.id)
         for attachment in company_service.sorted_bid_versions(company)
+        if attachment.third_party_sync_status == ThirdPartySyncStatus.unsynced
     ][:5]
 
-    project_service.mark_third_party_synced(db, project)
+    company_service.mark_bid_attachments_synced(db, bid_files)
 
     return ThirdPartyBiddingFileInfo(
         project_id=project.id,
@@ -55,7 +56,7 @@ def get_bidding_file_basic_info(
         project_name=project.name,
         participating_units=project.participating_units,
         bid_opening_at=project.bid_opening_at,
-        third_party_sync_status=project.third_party_sync_status,
+        third_party_sync_status=ThirdPartySyncStatus.synced,
         tender_file=ThirdPartyFileOut(
             id=tender_file.id,
             project_id=project.id,
@@ -72,6 +73,7 @@ def get_bidding_file_basic_info(
                 version_number=attachment.version_number or 1,
                 original_name=attachment.original_name,
                 size_bytes=attachment.size_bytes,
+                third_party_sync_status=attachment.third_party_sync_status,
                 download_url=_download_url(f"/bidding-files/bids/{attachment.id}/download"),
             )
             for attachment in bid_files

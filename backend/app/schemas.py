@@ -13,6 +13,10 @@ class AttachmentOut(BaseModel):
     size_bytes: int
     version_number: Optional[int] = None
     analysis_status: bool = False
+    third_party_sync_status: ThirdPartySyncStatus = ThirdPartySyncStatus.unsynced
+    report_original_name: Optional[str] = None
+    report_size_bytes: Optional[int] = None
+    report_uploaded_at: Optional[datetime] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -72,6 +76,10 @@ class BidVersionListItem(BaseModel):
     original_name: str
     size_bytes: int
     analysis_status: bool = False
+    third_party_sync_status: ThirdPartySyncStatus = ThirdPartySyncStatus.unsynced
+    report_original_name: Optional[str] = None
+    report_size_bytes: Optional[int] = None
+    report_uploaded_at: Optional[datetime] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -188,6 +196,10 @@ class BidVersionAnalysisUpdate(BaseModel):
     analysis_status: bool
 
 
+class BidVersionThirdPartySyncStatusUpdate(BaseModel):
+    third_party_sync_status: ThirdPartySyncStatus
+
+
 class ProjectThirdPartySyncStatusUpdate(BaseModel):
     third_party_sync_status: ThirdPartySyncStatus
 
@@ -218,6 +230,7 @@ class ThirdPartyBidFileOut(ThirdPartyFileOut):
     company_id: int
     company_name: str
     version_number: int
+    third_party_sync_status: ThirdPartySyncStatus
 
 
 class ThirdPartyBiddingFileInfo(BaseModel):

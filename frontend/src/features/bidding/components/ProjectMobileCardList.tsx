@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Card, Collapse, Empty, Popconfirm, Space, Spin, Tag, Tooltip } from "antd";
+import { Button, Card, Collapse, Empty, Popconfirm, Space, Spin, Tag, Tooltip, Upload } from "antd";
 import { formatChinaTime } from "@/utils/date";
 import {
   BankOutlined,
@@ -12,11 +12,17 @@ import {
   HistoryOutlined,
   PlusOutlined,
   SyncOutlined,
+  UploadOutlined,
 } from "@ant-design/icons";
 import BidFilePreviewLink from "./BidFilePreviewLink";
 import AnalysisStatusSwitch from "./AnalysisStatusSwitch";
 import EllipsisTooltip from "./EllipsisTooltip";
-import { PROJECT_STATUS_MAP, THIRD_PARTY_SYNC_STATUS_MAP } from "../constants";
+import {
+  ACCEPTED_FILE_TYPES,
+  PROJECT_STATUS_MAP,
+  REPORT_STATUS_MAP,
+  THIRD_PARTY_SYNC_STATUS_MAP,
+} from "../constants";
 import type {
   BidVersionListItem,
   BiddingCompanyListItem,
@@ -43,13 +49,19 @@ interface ProjectMobileCardListProps {
   onDeleteCompany: (id: number) => void;
   onPreviewVersion: (record: BidVersionListItem) => void;
   onDownloadVersion: (record: BidVersionListItem) => void;
+  onDownloadVersionReport: (record: BidVersionListItem) => void;
+  onUploadVersionReport: (record: BidVersionListItem, file: File) => void;
   onAnalysisStatusChange: (record: BidVersionListItem, analysisStatus: boolean) => void;
   onThirdPartySyncStatusChange: (
-    record: BiddingProjectListItem,
+    record: BidVersionListItem,
     thirdPartySyncStatus: ThirdPartySyncStatus,
   ) => void;
   isSuperAdmin: boolean;
   onDeleteVersion: (id: number) => void;
+}
+
+function hasVersionReport(record: Pick<BidVersionListItem, "report_original_name" | "report_uploaded_at">) {
+  return Boolean(record.report_original_name || record.report_uploaded_at);
 }
 
 export default function ProjectMobileCardList({
@@ -66,6 +78,8 @@ export default function ProjectMobileCardList({
   onDeleteCompany,
   onPreviewVersion,
   onDownloadVersion,
+  onDownloadVersionReport,
+  onUploadVersionReport,
   onAnalysisStatusChange,
   onThirdPartySyncStatusChange,
   isSuperAdmin,
@@ -140,9 +154,6 @@ export default function ProjectMobileCardList({
             <div className="flex flex-col gap-3">
               {group.children.map((record) => {
                 const statusMeta = PROJECT_STATUS_MAP[record.status];
-                const syncMeta = THIRD_PARTY_SYNC_STATUS_MAP[record.third_party_sync_status ?? "unsynced"];
-                const nextSyncStatus: ThirdPartySyncStatus =
-                  record.third_party_sync_status === "synced" ? "unsynced" : "synced";
                 return (
                   <Card key={record.id} size="small" className="shadow-sm">
                     <div className="flex items-start justify-between gap-2 mb-2">
@@ -168,16 +179,16 @@ export default function ProjectMobileCardList({
                         <Tag color={statusMeta.color} className="m-0">
                           {statusMeta.label}
                         </Tag>
-                        <Tag color={syncMeta.color} className="m-0">
-                          {syncMeta.label}
-                        </Tag>
                       </Space>
                     </div>
 
                     {record.children.length > 0 && (
                       <div className="mb-3 flex flex-col gap-2 rounded-lg bg-gray-50 p-2">
                         {record.children.map((company) => (
-                          <div key={company.id} className="border-b border-gray-100 pb-2 last:border-0 last:pb-0">
+                          <div
+                            key={company.id}
+                            className="border-b border-gray-100 pb-2 last:border-0 last:pb-0"
+                          >
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex items-center gap-1 text-sm font-medium min-w-0 flex-1">
                                 <BankOutlined className="text-emerald-600 shrink-0" />
@@ -192,55 +203,121 @@ export default function ProjectMobileCardList({
                                   disabled={company.status === "registered"}
                                   onClick={() => onFeedback(company, record)}
                                 />
-                                <Button
-                                  type="link"
-                                  size="small"
-                                  icon={<HistoryOutlined />}
-                                  onClick={() => onUploadRevision(group.id, record, company)}
-                                />
-                                <Popconfirm title="删除该单位及全部版本？" onConfirm={() => onDeleteCompany(company.id)}>
+                                <Tooltip title="上传新版投标文件">
+                                  <Button
+                                    type="link"
+                                    size="small"
+                                    icon={<HistoryOutlined />}
+                                    onClick={() => onUploadRevision(group.id, record, company)}
+                                  />
+                                </Tooltip>
+                                <Popconfirm
+                                  title="删除该单位及全部版本？"
+                                  onConfirm={() => onDeleteCompany(company.id)}
+                                >
                                   <Button type="link" size="small" danger icon={<DeleteOutlined />} />
                                 </Popconfirm>
                               </Space>
                             </div>
                             <div className="mt-1 pl-5 space-y-1">
-                              {company.children.map((version) => (
-                                <div key={version.id} className="flex flex-col gap-1 text-xs text-gray-600">
-                                  <div className="flex items-center justify-between gap-2">
-                                    <div className="flex min-w-0 flex-1 items-center">
-                                      <span className="shrink-0">v{version.version_number} · </span>
-                                      <BidFilePreviewLink attachmentId={version.id} filename={version.original_name} />
-                                    </div>
-                                    <Space size={0}>
-                                      <Tooltip title="预览">
-                                        <Button
-                                          type="link"
-                                          size="small"
-                                          icon={<EyeOutlined />}
-                                          onClick={() => onPreviewVersion(version)}
+                              {company.children.map((version) => {
+                                const syncMeta =
+                                  THIRD_PARTY_SYNC_STATUS_MAP[version.third_party_sync_status ?? "unsynced"];
+                                const reportMeta =
+                                  REPORT_STATUS_MAP[hasVersionReport(version) ? "uploaded" : "pending"];
+                                const nextSyncStatus: ThirdPartySyncStatus =
+                                  version.third_party_sync_status === "synced" ? "unsynced" : "synced";
+
+                                return (
+                                  <div key={version.id} className="flex flex-col gap-1 text-xs text-gray-600">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex min-w-0 flex-1 items-center">
+                                        <span className="shrink-0">v{version.version_number} · </span>
+                                        <BidFilePreviewLink
+                                          attachmentId={version.id}
+                                          filename={version.original_name}
                                         />
-                                      </Tooltip>
-                                      <Button
-                                        type="link"
-                                        size="small"
-                                        icon={<DownloadOutlined />}
-                                        onClick={() => onDownloadVersion(version)}
+                                      </div>
+                                      <Space size={0}>
+                                        <Tooltip title="预览">
+                                          <Button
+                                            type="link"
+                                            size="small"
+                                            icon={<EyeOutlined />}
+                                            onClick={() => onPreviewVersion(version)}
+                                          />
+                                        </Tooltip>
+                                        <Tooltip title="下载投标文件">
+                                          <Button
+                                            type="link"
+                                            size="small"
+                                            icon={<DownloadOutlined />}
+                                            onClick={() => onDownloadVersion(version)}
+                                          />
+                                        </Tooltip>
+                                        {isSuperAdmin && (
+                                          <Tooltip
+                                            title={nextSyncStatus === "synced" ? "标为已同步" : "标为未同步"}
+                                          >
+                                            <Button
+                                              type="link"
+                                              size="small"
+                                              icon={<SyncOutlined />}
+                                              onClick={() =>
+                                                onThirdPartySyncStatusChange(version, nextSyncStatus)
+                                              }
+                                            />
+                                          </Tooltip>
+                                        )}
+                                        {isSuperAdmin && (
+                                          <Upload
+                                            accept={ACCEPTED_FILE_TYPES}
+                                            showUploadList={false}
+                                            beforeUpload={(file) => {
+                                              void onUploadVersionReport(version, file);
+                                              return false;
+                                            }}
+                                          >
+                                            <Tooltip title="上传报告">
+                                              <Button type="link" size="small" icon={<UploadOutlined />} />
+                                            </Tooltip>
+                                          </Upload>
+                                        )}
+                                        {hasVersionReport(version) && (
+                                          <Tooltip title="下载报告">
+                                            <Button
+                                              type="link"
+                                              size="small"
+                                              icon={<DownloadOutlined />}
+                                              onClick={() => onDownloadVersionReport(version)}
+                                            />
+                                          </Tooltip>
+                                        )}
+                                        <Popconfirm
+                                          title="删除该版本？"
+                                          onConfirm={() => onDeleteVersion(version.id)}
+                                        >
+                                          <Button type="link" size="small" danger icon={<DeleteOutlined />} />
+                                        </Popconfirm>
+                                      </Space>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2 pl-5">
+                                      <span className="text-gray-500">分析状态</span>
+                                      <AnalysisStatusSwitch
+                                        value={version.analysis_status}
+                                        disabled={!isSuperAdmin}
+                                        onChange={(checked) => onAnalysisStatusChange(version, checked)}
                                       />
-                                      <Popconfirm title="删除该版本？" onConfirm={() => onDeleteVersion(version.id)}>
-                                        <Button type="link" size="small" danger icon={<DeleteOutlined />} />
-                                      </Popconfirm>
-                                    </Space>
+                                      <Tag color={syncMeta.color} className="m-0">
+                                        {syncMeta.label}
+                                      </Tag>
+                                      <Tag color={reportMeta.color} className="m-0">
+                                        报告{reportMeta.label}
+                                      </Tag>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-2 pl-5">
-                                    <span className="text-gray-500">分析状态</span>
-                                    <AnalysisStatusSwitch
-                                      value={version.analysis_status}
-                                      disabled={!isSuperAdmin}
-                                      onChange={(checked) => onAnalysisStatusChange(version, checked)}
-                                    />
-                                  </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                         ))}
@@ -254,15 +331,6 @@ export default function ProjectMobileCardList({
                       <Button size="small" icon={<EditOutlined />} onClick={() => onEdit(record.id)}>
                         编辑
                       </Button>
-                      {isSuperAdmin && (
-                        <Button
-                          size="small"
-                          icon={<SyncOutlined />}
-                          onClick={() => onThirdPartySyncStatusChange(record, nextSyncStatus)}
-                        >
-                          {nextSyncStatus === "synced" ? "标为已同步" : "标为未同步"}
-                        </Button>
-                      )}
                       <Popconfirm title="确定删除该项目？" onConfirm={() => onDelete(record.id)}>
                         <Button size="small" danger icon={<DeleteOutlined />}>
                           删除

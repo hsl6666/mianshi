@@ -630,6 +630,76 @@ def _migrate_third_party_sync_status() -> None:
         )
 
 
+def _migrate_bid_file_sync_and_report_fields() -> None:
+    """为投标文件版本补充三方同步状态和报告文件字段。"""
+    inspector = inspect(engine)
+    if "project_attachments" not in inspector.get_table_names():
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS app_migrations (
+                    name VARCHAR(128) PRIMARY KEY,
+                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        marker = conn.execute(
+            text("SELECT name FROM app_migrations WHERE name = :name"),
+            {"name": "bid_file_sync_report_fields_v1"},
+        ).fetchone()
+        if marker:
+            return
+
+        columns = {col["name"] for col in inspector.get_columns("project_attachments")}
+        if "third_party_sync_status" not in columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE project_attachments "
+                    "ADD COLUMN third_party_sync_status VARCHAR(32) NOT NULL DEFAULT 'unsynced'"
+                )
+            )
+        if "report_original_name" not in columns:
+            conn.execute(text("ALTER TABLE project_attachments ADD COLUMN report_original_name VARCHAR(255)"))
+        if "report_stored_name" not in columns:
+            conn.execute(text("ALTER TABLE project_attachments ADD COLUMN report_stored_name VARCHAR(255)"))
+        if "report_content_type" not in columns:
+            conn.execute(text("ALTER TABLE project_attachments ADD COLUMN report_content_type VARCHAR(128)"))
+        if "report_size_bytes" not in columns:
+            conn.execute(text("ALTER TABLE project_attachments ADD COLUMN report_size_bytes INTEGER"))
+        if "report_uploaded_at" not in columns:
+            conn.execute(text("ALTER TABLE project_attachments ADD COLUMN report_uploaded_at DATETIME"))
+
+        table_names = set(inspector.get_table_names())
+        if "bidding_projects" in table_names:
+            project_columns = {col["name"] for col in inspector.get_columns("bidding_projects")}
+            if "third_party_sync_status" in project_columns:
+                conn.execute(
+                    text(
+                        """
+                        UPDATE project_attachments
+                        SET third_party_sync_status = COALESCE(
+                            (
+                                SELECT bidding_projects.third_party_sync_status
+                                FROM bidding_projects
+                                WHERE bidding_projects.id = project_attachments.project_id
+                            ),
+                            'unsynced'
+                        )
+                        WHERE attachment_type = 'bid_doc'
+                        """
+                    )
+                )
+
+        conn.execute(
+            text("INSERT INTO app_migrations (name) VALUES (:name)"),
+            {"name": "bid_file_sync_report_fields_v1"},
+        )
+
+
 def init_db() -> None:
     from app import models  # noqa: F401
 
@@ -642,6 +712,7 @@ def init_db() -> None:
     _migrate_company_feedbacks()
     _migrate_bid_analysis_status()
     _migrate_third_party_sync_status()
+    _migrate_bid_file_sync_and_report_fields()
     _migrate_operation_log_timezone()
     _migrate_attachment_timezone()
     _migrate_bidding_entity_timezone()

@@ -11,6 +11,7 @@ import {
   Table,
   Tag,
   Typography,
+  Upload,
   message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -26,6 +27,7 @@ import {
   HistoryOutlined,
   PlusOutlined,
   SyncOutlined,
+  UploadOutlined,
 } from "@ant-design/icons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useAuthStore } from "@/store/authStore";
@@ -36,6 +38,7 @@ import {
   deleteCompany,
   deleteProject,
   downloadBidVersion,
+  downloadBidVersionReport,
   downloadGroupAttachment,
   downloadProjectAttachment,
   fetchCompany,
@@ -46,7 +49,8 @@ import {
   updateGroup,
   updateProject,
   updateBidVersionAnalysisStatus,
-  updateProjectThirdPartySyncStatus,
+  updateBidVersionThirdPartySyncStatus,
+  uploadBidVersionReport,
 } from "../api";
 import AnalysisStatusSwitch from "../components/AnalysisStatusSwitch";
 import FeedbackModal from "../components/FeedbackModal";
@@ -56,7 +60,12 @@ import GroupFormModal from "../components/GroupFormModal";
 import ProjectDetailDrawer from "../components/ProjectDetailDrawer";
 import ProjectFormModal from "../components/ProjectFormModal";
 import ProjectMobileCardList from "../components/ProjectMobileCardList";
-import { PROJECT_STATUS_MAP, THIRD_PARTY_SYNC_STATUS_MAP } from "../constants";
+import {
+  ACCEPTED_FILE_TYPES,
+  PROJECT_STATUS_MAP,
+  REPORT_STATUS_MAP,
+  THIRD_PARTY_SYNC_STATUS_MAP,
+} from "../constants";
 import type {
   BidVersionListItem,
   BiddingCompanyListItem,
@@ -95,6 +104,10 @@ function getGroupTenderFile(group: BiddingProjectGroupTreeItem) {
   }
 
   return null;
+}
+
+function hasVersionReport(record: Pick<BidVersionListItem, "report_original_name" | "report_uploaded_at">) {
+  return Boolean(record.report_original_name || record.report_uploaded_at);
 }
 
 export default function ProjectListPage() {
@@ -312,6 +325,18 @@ export default function ProjectListPage() {
     }
   };
 
+  const handleDownloadVersionReport = async (record: BidVersionListItem) => {
+    if (!record.report_original_name) {
+      message.warning("暂无报告可下载");
+      return;
+    }
+    try {
+      await downloadBidVersionReport({ attachmentId: record.id, filename: record.report_original_name });
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "下载报告失败");
+    }
+  };
+
   const handleDownloadGroupTender = async (group: BiddingProjectGroupTreeItem) => {
     const tenderFile = getGroupTenderFile(group);
     if (!tenderFile) {
@@ -359,6 +384,55 @@ export default function ProjectListPage() {
     );
   };
 
+  const patchVersionThirdPartySyncStatus = (
+    attachmentId: number,
+    thirdPartySyncStatus: ThirdPartySyncStatus,
+  ) => {
+    setItems((prev) =>
+      prev.map((group) => ({
+        ...group,
+        children: group.children.map((project) => ({
+          ...project,
+          children: project.children.map((company) => ({
+            ...company,
+            children: company.children.map((version) =>
+              version.id === attachmentId
+                ? { ...version, third_party_sync_status: thirdPartySyncStatus }
+                : version,
+            ),
+          })),
+        })),
+      })),
+    );
+  };
+
+  const patchVersionReport = (
+    attachmentId: number,
+    report: Pick<BidVersionListItem, "report_original_name" | "report_size_bytes" | "report_uploaded_at">,
+  ) => {
+    setItems((prev) =>
+      prev.map((group) => ({
+        ...group,
+        children: group.children.map((project) => ({
+          ...project,
+          children: project.children.map((company) => ({
+            ...company,
+            children: company.children.map((version) =>
+              version.id === attachmentId
+                ? {
+                    ...version,
+                    report_original_name: report.report_original_name,
+                    report_size_bytes: report.report_size_bytes,
+                    report_uploaded_at: report.report_uploaded_at,
+                  }
+                : version,
+            ),
+          })),
+        })),
+      })),
+    );
+  };
+
   const handleAnalysisStatusChange = async (record: BidVersionListItem, analysisStatus: boolean) => {
     const previous = record.analysis_status;
     patchVersionAnalysisStatus(record.id, analysisStatus);
@@ -372,18 +446,34 @@ export default function ProjectListPage() {
   };
 
   const handleThirdPartySyncStatusChange = async (
-    record: BiddingProjectListItem,
+    record: BidVersionListItem,
     thirdPartySyncStatus: ThirdPartySyncStatus,
   ) => {
+    const previous = record.third_party_sync_status;
+    patchVersionThirdPartySyncStatus(record.id, thirdPartySyncStatus);
     try {
-      await updateProjectThirdPartySyncStatus({
-        projectId: record.id,
+      await updateBidVersionThirdPartySyncStatus({
+        attachmentId: record.id,
         thirdPartySyncStatus,
       });
       message.success(thirdPartySyncStatus === "synced" ? "已标记为已同步" : "已标记为未同步");
-      await loadList();
     } catch (error) {
+      patchVersionThirdPartySyncStatus(record.id, previous);
       message.error(error instanceof Error ? error.message : "更新三方对接状态失败");
+    }
+  };
+
+  const handleUploadVersionReport = async (record: BidVersionListItem, file: File) => {
+    try {
+      const next = await uploadBidVersionReport({ attachmentId: record.id, file });
+      patchVersionReport(record.id, {
+        report_original_name: next.report_original_name ?? null,
+        report_size_bytes: next.report_size_bytes ?? null,
+        report_uploaded_at: next.report_uploaded_at ?? null,
+      });
+      message.success("报告已上传");
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "上传报告失败");
     }
   };
 
@@ -405,8 +495,6 @@ export default function ProjectListPage() {
   };
 
   const renderProjectActions = (record: BiddingProjectListItem) => {
-    const nextSyncStatus: ThirdPartySyncStatus =
-      record.third_party_sync_status === "synced" ? "unsynced" : "synced";
     return (
       <Space size={4} wrap>
         <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => openDetail(record.id)}>
@@ -415,16 +503,6 @@ export default function ProjectListPage() {
         <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEdit(record.id)}>
           编辑
         </Button>
-        {isSuperAdmin && (
-          <Button
-            type="link"
-            size="small"
-            icon={<SyncOutlined />}
-            onClick={() => handleThirdPartySyncStatusChange(record, nextSyncStatus)}
-          >
-            {nextSyncStatus === "synced" ? "标为已同步" : "标为未同步"}
-          </Button>
-        )}
         <Popconfirm title="确定删除该项目？" onConfirm={() => handleDelete(record.id)}>
           <Button type="link" size="small" danger icon={<DeleteOutlined />}>
             删除
@@ -445,7 +523,7 @@ export default function ProjectListPage() {
           disabled={!groupId}
           onClick={() => groupId && openUploadRevision(groupId, project, record)}
         >
-          上传新版
+          上传新版投标文件
         </Button>
         <Button
           type="link"
@@ -465,21 +543,65 @@ export default function ProjectListPage() {
     );
   };
 
-  const renderVersionActions = (record: BidVersionListItem) => (
-    <Space size={4} wrap>
-      <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handlePreviewVersion(record)}>
-        预览
-      </Button>
-      <Button type="link" size="small" icon={<DownloadOutlined />} onClick={() => handleDownloadVersion(record)}>
-        下载
-      </Button>
-      <Popconfirm title="确定删除该版本？" onConfirm={() => handleDeleteBidVersion(record.id)}>
-        <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-          删除
+  const renderVersionActions = (record: BidVersionListItem) => {
+    const nextSyncStatus: ThirdPartySyncStatus =
+      record.third_party_sync_status === "synced" ? "unsynced" : "synced";
+
+    return (
+      <Space size={4} wrap>
+        <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handlePreviewVersion(record)}>
+          预览
         </Button>
-      </Popconfirm>
-    </Space>
-  );
+        <Button
+          type="link"
+          size="small"
+          icon={<DownloadOutlined />}
+          onClick={() => handleDownloadVersion(record)}
+        >
+          下载投标文件
+        </Button>
+        {isSuperAdmin && (
+          <Button
+            type="link"
+            size="small"
+            icon={<SyncOutlined />}
+            onClick={() => handleThirdPartySyncStatusChange(record, nextSyncStatus)}
+          >
+            {nextSyncStatus === "synced" ? "标为已同步" : "标为未同步"}
+          </Button>
+        )}
+        {isSuperAdmin && (
+          <Upload
+            accept={ACCEPTED_FILE_TYPES}
+            showUploadList={false}
+            beforeUpload={(file) => {
+              void handleUploadVersionReport(record, file);
+              return false;
+            }}
+          >
+            <Button type="link" size="small" icon={<UploadOutlined />}>
+              上传报告
+            </Button>
+          </Upload>
+        )}
+        {hasVersionReport(record) && (
+          <Button
+            type="link"
+            size="small"
+            icon={<DownloadOutlined />}
+            onClick={() => handleDownloadVersionReport(record)}
+          >
+            下载报告
+          </Button>
+        )}
+        <Popconfirm title="确定删除该版本？" onConfirm={() => handleDeleteBidVersion(record.id)}>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+            删除
+          </Button>
+        </Popconfirm>
+      </Space>
+    );
+  };
 
   const columns: ColumnsType<ProjectTreeRow> = [
     {
@@ -616,10 +738,26 @@ export default function ProjectListPage() {
       key: "third_party_sync_status",
       width: 110,
       render: (_, record) => {
-        if (record.row_type !== "project") {
+        if (record.row_type !== "version") {
           return <EllipsisTooltip title="-">-</EllipsisTooltip>;
         }
         const meta = THIRD_PARTY_SYNC_STATUS_MAP[record.third_party_sync_status ?? "unsynced"];
+        return (
+          <EllipsisTooltip title={meta.label}>
+            <Tag color={meta.color}>{meta.label}</Tag>
+          </EllipsisTooltip>
+        );
+      },
+    },
+    {
+      title: "报告状态",
+      key: "report_status",
+      width: 110,
+      render: (_, record) => {
+        if (record.row_type !== "version") {
+          return <EllipsisTooltip title="-">-</EllipsisTooltip>;
+        }
+        const meta = REPORT_STATUS_MAP[hasVersionReport(record) ? "uploaded" : "pending"];
         return (
           <EllipsisTooltip title={meta.label}>
             <Tag color={meta.color}>{meta.label}</Tag>
@@ -661,7 +799,7 @@ export default function ProjectListPage() {
       title: "操作",
       key: "actions",
       fixed: "right",
-      width: 380,
+      width: 500,
       render: (_, record) => {
         if (record.row_type === "group") {
           const tenderFile = getGroupTenderFile(record);
@@ -786,6 +924,8 @@ export default function ProjectListPage() {
               onDeleteCompany={handleDeleteCompany}
               onPreviewVersion={handlePreviewVersion}
               onDownloadVersion={handleDownloadVersion}
+              onDownloadVersionReport={handleDownloadVersionReport}
+              onUploadVersionReport={handleUploadVersionReport}
               onAnalysisStatusChange={handleAnalysisStatusChange}
               onThirdPartySyncStatusChange={handleThirdPartySyncStatusChange}
               isSuperAdmin={isSuperAdmin}
@@ -804,7 +944,7 @@ export default function ProjectListPage() {
               expandedRowKeys,
               onExpandedRowsChange: (keys) => setExpandedRowKeys([...keys]),
             }}
-            scroll={{ x: 1400 }}
+            scroll={{ x: 1540 }}
             pagination={{
               current: page,
               pageSize,
@@ -821,7 +961,12 @@ export default function ProjectListPage() {
       </Card>
 
       {isMobile && (
-        <FloatButton type="primary" icon={<PlusOutlined />} onClick={() => openCreate()} tooltip="新建项目组" />
+        <FloatButton
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={() => openCreate()}
+          tooltip="新建项目组"
+        />
       )}
 
       <ProjectFormModal

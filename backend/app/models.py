@@ -130,6 +130,16 @@ class ProjectAttachment(Base):
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)
     version_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     analysis_status: Mapped[bool] = mapped_column(default=False, nullable=False)
+    third_party_sync_status: Mapped[ThirdPartySyncStatus] = mapped_column(
+        Enum(ThirdPartySyncStatus),
+        default=ThirdPartySyncStatus.unsynced,
+        nullable=False,
+    )
+    report_original_name: Mapped[Optional[str]] = mapped_column(String(255))
+    report_stored_name: Mapped[Optional[str]] = mapped_column(String(255))
+    report_content_type: Mapped[Optional[str]] = mapped_column(String(128))
+    report_size_bytes: Mapped[Optional[int]] = mapped_column(Integer)
+    report_uploaded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=china_now)
 
     project: Mapped["BiddingProject"] = relationship(back_populates="attachments")

@@ -13,6 +13,10 @@ export interface ProjectAttachment {
   size_bytes: number;
   version_number?: number | null;
   analysis_status?: boolean;
+  third_party_sync_status?: ThirdPartySyncStatus;
+  report_original_name?: string | null;
+  report_size_bytes?: number | null;
+  report_uploaded_at?: string | null;
   created_at: string;
 }
 
@@ -54,6 +58,10 @@ export interface BidVersionListItem {
   original_name: string;
   size_bytes: number;
   analysis_status: boolean;
+  third_party_sync_status: ThirdPartySyncStatus;
+  report_original_name: string | null;
+  report_size_bytes: number | null;
+  report_uploaded_at: string | null;
   created_at: string;
 }
 

@@ -37,6 +37,11 @@ interface FormFields {
   bid_doc?: UploadFile[];
 }
 
+function isLikelyReportFile(file?: File) {
+  const filename = file?.name.toLowerCase() ?? "";
+  return filename.includes("报告") || filename.includes("report");
+}
+
 export default function ProjectFormModal({
   open,
   loading,
@@ -136,7 +141,7 @@ export default function ProjectFormModal({
       ? "existing"
       : presetGroupId || presetRevision
         ? "existing"
-        : values.group_mode ?? "new";
+        : (values.group_mode ?? "new");
 
     if (!isEdit && resolvedGroupMode === "existing" && !resolvedGroupId) {
       message.warning("请选择项目组");
@@ -184,6 +189,10 @@ export default function ProjectFormModal({
     }
     if (isRevision && !bidFile) {
       message.warning("请上传新版投标文件");
+      return;
+    }
+    if (!isEdit && isLikelyReportFile(bidFile)) {
+      message.warning("检测到报告文件，请在投标文件行使用“上传报告”");
       return;
     }
 
@@ -349,15 +358,15 @@ export default function ProjectFormModal({
             <Form.Item
               name="name"
               label="项目名称"
-              rules={[{ required: true, message: useSelectOrInput ? "请选择或输入项目名称" : "请输入项目名称" }]}
+              rules={[
+                { required: true, message: useSelectOrInput ? "请选择或输入项目名称" : "请输入项目名称" },
+              ]}
             >
               {useSelectOrInput ? (
                 <SelectOrInput
                   options={formOptions.project_names}
                   loading={optionsLoading}
-                  selectPlaceholder={
-                    effectiveGroupId ? "选择本组已有项目名称" : "请先选择项目组"
-                  }
+                  selectPlaceholder={effectiveGroupId ? "选择本组已有项目名称" : "请先选择项目组"}
                   inputPlaceholder="例如：XX 市政道路改造工程"
                   disabled={lockProjectMeta || !effectiveGroupId}
                 />
@@ -373,15 +382,15 @@ export default function ProjectFormModal({
             <Form.Item
               name="participating_units"
               label="参加单位"
-              rules={[{ required: true, message: useSelectOrInput ? "请选择或输入参加单位" : "请输入参加单位" }]}
+              rules={[
+                { required: true, message: useSelectOrInput ? "请选择或输入参加单位" : "请输入参加单位" },
+              ]}
             >
               {useSelectOrInput ? (
                 <SelectOrInput
                   options={formOptions.company_names}
                   loading={optionsLoading}
-                  selectPlaceholder={
-                    effectiveGroupId ? "选择本组已有参加单位" : "请先选择项目组"
-                  }
+                  selectPlaceholder={effectiveGroupId ? "选择本组已有参加单位" : "请先选择项目组"}
                   inputPlaceholder="例如：XX建设有限公司"
                   disabled={lockProjectMeta || !effectiveGroupId}
                 />

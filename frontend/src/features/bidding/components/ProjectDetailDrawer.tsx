@@ -1,13 +1,26 @@
 import { useEffect, useState } from "react";
-import { Descriptions, Divider, Drawer, Space, Tag, Typography, message } from "antd";
+import { Button, Descriptions, Divider, Drawer, Space, Tag, Typography, Upload, message } from "antd";
+import { DownloadOutlined, SyncOutlined, UploadOutlined } from "@ant-design/icons";
 import { formatChinaTime } from "@/utils/date";
 import { useResponsiveOverlay } from "@/hooks/useResponsiveOverlay";
-import { ATTACHMENT_TYPE_MAP, PROJECT_STATUS_MAP, THIRD_PARTY_SYNC_STATUS_MAP } from "../constants";
-import { downloadProjectAttachment, updateBidVersionAnalysisStatus } from "../api";
+import {
+  ACCEPTED_FILE_TYPES,
+  ATTACHMENT_TYPE_MAP,
+  PROJECT_STATUS_MAP,
+  REPORT_STATUS_MAP,
+  THIRD_PARTY_SYNC_STATUS_MAP,
+} from "../constants";
+import {
+  downloadBidVersionReport,
+  downloadProjectAttachment,
+  updateBidVersionAnalysisStatus,
+  updateBidVersionThirdPartySyncStatus,
+  uploadBidVersionReport,
+} from "../api";
 import AnalysisStatusSwitch from "./AnalysisStatusSwitch";
 import BidFilePreviewLink from "./BidFilePreviewLink";
 import EllipsisTooltip from "./EllipsisTooltip";
-import type { BiddingProjectDetail } from "../types";
+import type { BiddingProjectDetail, ProjectAttachment, ThirdPartySyncStatus } from "../types";
 import { useAuthStore } from "@/store/authStore";
 
 interface ProjectDetailDrawerProps {
@@ -20,25 +33,46 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
   const { isMobile, drawerProps } = useResponsiveOverlay();
   const isSuperAdmin = useAuthStore((state) => state.isSuperAdmin);
   const [analysisStatusMap, setAnalysisStatusMap] = useState<Record<number, boolean>>({});
+  const [syncStatusMap, setSyncStatusMap] = useState<Record<number, ThirdPartySyncStatus>>({});
+  const [reportMap, setReportMap] = useState<
+    Record<
+      number,
+      Pick<ProjectAttachment, "report_original_name" | "report_size_bytes" | "report_uploaded_at">
+    >
+  >({});
 
   useEffect(() => {
     if (!project) {
       setAnalysisStatusMap({});
+      setSyncStatusMap({});
+      setReportMap({});
       return;
     }
-    const next: Record<number, boolean> = {};
+    const nextAnalysis: Record<number, boolean> = {};
+    const nextSync: Record<number, ThirdPartySyncStatus> = {};
+    const nextReport: Record<
+      number,
+      Pick<ProjectAttachment, "report_original_name" | "report_size_bytes" | "report_uploaded_at">
+    > = {};
     project.companies.forEach((company) => {
       company.attachments.forEach((file) => {
-        next[file.id] = file.analysis_status ?? false;
+        nextAnalysis[file.id] = file.analysis_status ?? false;
+        nextSync[file.id] = file.third_party_sync_status ?? "unsynced";
+        nextReport[file.id] = {
+          report_original_name: file.report_original_name ?? null,
+          report_size_bytes: file.report_size_bytes ?? null,
+          report_uploaded_at: file.report_uploaded_at ?? null,
+        };
       });
     });
-    setAnalysisStatusMap(next);
+    setAnalysisStatusMap(nextAnalysis);
+    setSyncStatusMap(nextSync);
+    setReportMap(nextReport);
   }, [project]);
 
   if (!project) return null;
 
   const statusMeta = PROJECT_STATUS_MAP[project.status];
-  const syncMeta = THIRD_PARTY_SYNC_STATUS_MAP[project.third_party_sync_status ?? "unsynced"];
 
   const handleProjectDownload = async (attachmentId: number, filename: string) => {
     try {
@@ -60,6 +94,47 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
     }
   };
 
+  const handleSyncStatusChange = async (attachmentId: number, thirdPartySyncStatus: ThirdPartySyncStatus) => {
+    const previous = syncStatusMap[attachmentId] ?? "unsynced";
+    setSyncStatusMap((prev) => ({ ...prev, [attachmentId]: thirdPartySyncStatus }));
+    try {
+      await updateBidVersionThirdPartySyncStatus({ attachmentId, thirdPartySyncStatus });
+      message.success(thirdPartySyncStatus === "synced" ? "已标记为已同步" : "已标记为未同步");
+    } catch (error) {
+      setSyncStatusMap((prev) => ({ ...prev, [attachmentId]: previous }));
+      message.error(error instanceof Error ? error.message : "更新三方对接状态失败");
+    }
+  };
+
+  const handleUploadReport = async (attachmentId: number, file: File) => {
+    try {
+      const next = await uploadBidVersionReport({ attachmentId, file });
+      setReportMap((prev) => ({
+        ...prev,
+        [attachmentId]: {
+          report_original_name: next.report_original_name ?? null,
+          report_size_bytes: next.report_size_bytes ?? null,
+          report_uploaded_at: next.report_uploaded_at ?? null,
+        },
+      }));
+      message.success("报告已上传");
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "上传报告失败");
+    }
+  };
+
+  const handleDownloadReport = async (attachmentId: number, filename: string | null | undefined) => {
+    if (!filename) {
+      message.warning("暂无报告可下载");
+      return;
+    }
+    try {
+      await downloadBidVersionReport({ attachmentId, filename });
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "下载报告失败");
+    }
+  };
+
   return (
     <Drawer
       title="项目详情"
@@ -77,9 +152,6 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
         </Descriptions.Item>
         <Descriptions.Item label="状态">
           <Tag color={statusMeta.color}>{statusMeta.label}</Tag>
-        </Descriptions.Item>
-        <Descriptions.Item label="三方对接">
-          <Tag color={syncMeta.color}>{syncMeta.label}</Tag>
         </Descriptions.Item>
         <Descriptions.Item label="参加单位">
           <EllipsisTooltip
@@ -154,6 +226,17 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
                     const timeText = formatChinaTime(file.created_at, "YYYY-MM-DD HH:mm");
                     const prefix = `v${file.version_number ?? "-"} · `;
                     const suffix = `（${timeText}）`;
+                    const syncStatus = syncStatusMap[file.id] ?? file.third_party_sync_status ?? "unsynced";
+                    const syncMeta = THIRD_PARTY_SYNC_STATUS_MAP[syncStatus];
+                    const nextSyncStatus: ThirdPartySyncStatus =
+                      syncStatus === "synced" ? "unsynced" : "synced";
+                    const report = reportMap[file.id] ?? {
+                      report_original_name: file.report_original_name ?? null,
+                      report_size_bytes: file.report_size_bytes ?? null,
+                      report_uploaded_at: file.report_uploaded_at ?? null,
+                    };
+                    const hasReport = Boolean(report.report_original_name || report.report_uploaded_at);
+                    const reportMeta = REPORT_STATUS_MAP[hasReport ? "uploaded" : "pending"];
                     return (
                       <div key={file.id} className="space-y-1">
                         <div className="flex min-w-0 items-center gap-1">
@@ -168,6 +251,52 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
                             disabled={!isSuperAdmin}
                             onChange={(checked) => handleAnalysisStatusChange(file.id, checked)}
                           />
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 pl-5 text-xs text-gray-500">
+                          <span>三方对接</span>
+                          <Tag color={syncMeta.color} className="m-0">
+                            {syncMeta.label}
+                          </Tag>
+                          {isSuperAdmin && (
+                            <Button
+                              type="link"
+                              size="small"
+                              className="!px-0"
+                              icon={<SyncOutlined />}
+                              onClick={() => handleSyncStatusChange(file.id, nextSyncStatus)}
+                            >
+                              {nextSyncStatus === "synced" ? "标为已同步" : "标为未同步"}
+                            </Button>
+                          )}
+                          <span>报告状态</span>
+                          <Tag color={reportMeta.color} className="m-0">
+                            {reportMeta.label}
+                          </Tag>
+                          {isSuperAdmin && (
+                            <Upload
+                              accept={ACCEPTED_FILE_TYPES}
+                              showUploadList={false}
+                              beforeUpload={(uploadFile) => {
+                                void handleUploadReport(file.id, uploadFile);
+                                return false;
+                              }}
+                            >
+                              <Button type="link" size="small" className="!px-0" icon={<UploadOutlined />}>
+                                上传报告
+                              </Button>
+                            </Upload>
+                          )}
+                          {hasReport && (
+                            <Button
+                              type="link"
+                              size="small"
+                              className="!px-0"
+                              icon={<DownloadOutlined />}
+                              onClick={() => handleDownloadReport(file.id, report.report_original_name)}
+                            >
+                              下载报告
+                            </Button>
+                          )}
                         </div>
                       </div>
                     );

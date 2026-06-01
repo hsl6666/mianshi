@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -8,9 +8,18 @@ from app.api.deps import get_client_ip, get_current_user, require_super_admin
 from app.core.config import get_settings
 from app.core.security import CurrentUser
 from app.db import get_db
-from app.schemas import BidVersionAnalysisUpdate, CompanyDetail, CompanyUpdate, FeedbackCreate, FeedbackOut
+from app.schemas import (
+    AttachmentOut,
+    BidVersionAnalysisUpdate,
+    BidVersionThirdPartySyncStatusUpdate,
+    CompanyDetail,
+    CompanyUpdate,
+    FeedbackCreate,
+    FeedbackOut,
+)
 from app.services import bidding_companies as company_service
 from app.services import operation_logs as log_service
+from app.services.files import save_upload
 
 router = APIRouter(
     prefix="/api",
@@ -166,6 +175,103 @@ def update_bid_version_analysis_status(
         ip_address=get_client_ip(request),
     )
     return payload
+
+
+@router.patch("/bid-versions/{attachment_id}/third-party-sync-status", response_model=BidVersionThirdPartySyncStatusUpdate)
+def update_bid_version_third_party_sync_status(
+    attachment_id: int,
+    payload: BidVersionThirdPartySyncStatusUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_super_admin),
+) -> BidVersionThirdPartySyncStatusUpdate:
+    attachment = company_service.get_bid_attachment(db, attachment_id, current_user.owner_filter)
+    if not attachment:
+        raise HTTPException(status_code=404, detail="投标文件版本不存在")
+
+    company_service.update_bid_third_party_sync_status(
+        db,
+        attachment,
+        third_party_sync_status=payload.third_party_sync_status,
+    )
+    status_label = payload.third_party_sync_status.value
+    company_name = attachment.company.name if attachment.company else ""
+    log_service.record_log(
+        db,
+        username=current_user.username,
+        action="update",
+        module="bidding",
+        resource_type="bid_version",
+        resource_id=attachment_id,
+        summary=f"更新投标文件三方同步状态 {company_name} v{attachment.version_number or '-'} -> {status_label}",
+        ip_address=get_client_ip(request),
+    )
+    return payload
+
+
+@router.post("/bid-versions/{attachment_id}/report", response_model=AttachmentOut)
+async def upload_bid_version_report(
+    attachment_id: int,
+    request: Request,
+    report_file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_super_admin),
+) -> AttachmentOut:
+    attachment = company_service.get_bid_attachment(db, attachment_id, current_user.owner_filter)
+    if not attachment:
+        raise HTTPException(status_code=404, detail="投标文件版本不存在")
+
+    try:
+        stored_name, original_name, size_bytes, content_type = await save_upload(
+            report_file, attachment_id, prefix="report"
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    attachment = company_service.replace_bid_report(
+        db,
+        attachment,
+        original_name=original_name,
+        stored_name=stored_name,
+        size_bytes=size_bytes,
+        content_type=content_type,
+    )
+    company_name = attachment.company.name if attachment.company else ""
+    log_service.record_log(
+        db,
+        username=current_user.username,
+        action="upload",
+        module="bidding",
+        resource_type="bid_version_report",
+        resource_id=attachment_id,
+        summary=f"上传投标文件报告 {company_name} v{attachment.version_number or '-'}",
+        ip_address=get_client_ip(request),
+    )
+    return AttachmentOut.model_validate(attachment)
+
+
+@router.get("/bid-versions/{attachment_id}/report/download")
+def download_bid_version_report(
+    attachment_id: int,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> FileResponse:
+    attachment = company_service.get_bid_attachment(db, attachment_id, current_user.owner_filter)
+    if not attachment:
+        raise HTTPException(status_code=404, detail="投标文件版本不存在")
+    if not attachment.report_stored_name or not attachment.report_original_name:
+        raise HTTPException(status_code=404, detail="报告不存在")
+
+    settings = get_settings()
+    file_path = settings.uploads_dir / attachment.report_stored_name
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="文件不存在")
+
+    return FileResponse(
+        path=file_path,
+        filename=attachment.report_original_name,
+        media_type=attachment.report_content_type or "application/octet-stream",
+    )
 
 
 @router.delete("/bid-versions/{attachment_id}", status_code=204)
