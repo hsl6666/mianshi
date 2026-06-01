@@ -102,7 +102,7 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
       message.success(thirdPartySyncStatus === "synced" ? "已标记为已同步" : "已标记为未同步");
     } catch (error) {
       setSyncStatusMap((prev) => ({ ...prev, [attachmentId]: previous }));
-      message.error(error instanceof Error ? error.message : "更新三方对接状态失败");
+      message.error(error instanceof Error ? error.message : "更新三方同步状态失败");
     }
   };
 
@@ -117,6 +117,7 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
           report_uploaded_at: next.report_uploaded_at ?? null,
         },
       }));
+      setAnalysisStatusMap((prev) => ({ ...prev, [attachmentId]: next.analysis_status ?? true }));
       message.success("报告已上传");
     } catch (error) {
       message.error(error instanceof Error ? error.message : "上传报告失败");
@@ -252,12 +253,12 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
                             onChange={(checked) => handleAnalysisStatusChange(file.id, checked)}
                           />
                         </div>
-                        <div className="flex flex-wrap items-center gap-2 pl-5 text-xs text-gray-500">
-                          <span>三方对接</span>
-                          <Tag color={syncMeta.color} className="m-0">
-                            {syncMeta.label}
-                          </Tag>
-                          {isSuperAdmin && (
+                        {isSuperAdmin && (
+                          <div className="flex flex-wrap items-center gap-2 pl-5 text-xs text-gray-500">
+                            <span>三方同步状态</span>
+                            <Tag color={syncMeta.color} className="m-0">
+                              {syncMeta.label}
+                            </Tag>
                             <Button
                               type="link"
                               size="small"
@@ -267,7 +268,9 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
                             >
                               {nextSyncStatus === "synced" ? "标为已同步" : "标为未同步"}
                             </Button>
-                          )}
+                          </div>
+                        )}
+                        <div className="flex flex-wrap items-center gap-2 pl-5 text-xs text-gray-500">
                           <span>报告状态</span>
                           <Tag color={reportMeta.color} className="m-0">
                             {reportMeta.label}

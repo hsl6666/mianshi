@@ -308,9 +308,14 @@ export default function ProjectMobileCardList({
                                         disabled={!isSuperAdmin}
                                         onChange={(checked) => onAnalysisStatusChange(version, checked)}
                                       />
-                                      <Tag color={syncMeta.color} className="m-0">
-                                        {syncMeta.label}
-                                      </Tag>
+                                      {isSuperAdmin && (
+                                        <>
+                                          <span className="text-gray-500">三方同步状态</span>
+                                          <Tag color={syncMeta.color} className="m-0">
+                                            {syncMeta.label}
+                                          </Tag>
+                                        </>
+                                      )}
                                       <Tag color={reportMeta.color} className="m-0">
                                         报告{reportMeta.label}
                                       </Tag>

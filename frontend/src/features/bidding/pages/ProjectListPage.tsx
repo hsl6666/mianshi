@@ -408,7 +408,9 @@ export default function ProjectListPage() {
 
   const patchVersionReport = (
     attachmentId: number,
-    report: Pick<BidVersionListItem, "report_original_name" | "report_size_bytes" | "report_uploaded_at">,
+    report: Pick<BidVersionListItem, "report_original_name" | "report_size_bytes" | "report_uploaded_at"> & {
+      analysis_status: boolean;
+    },
   ) => {
     setItems((prev) =>
       prev.map((group) => ({
@@ -424,6 +426,7 @@ export default function ProjectListPage() {
                     report_original_name: report.report_original_name,
                     report_size_bytes: report.report_size_bytes,
                     report_uploaded_at: report.report_uploaded_at,
+                    analysis_status: report.analysis_status,
                   }
                 : version,
             ),
@@ -459,7 +462,7 @@ export default function ProjectListPage() {
       message.success(thirdPartySyncStatus === "synced" ? "已标记为已同步" : "已标记为未同步");
     } catch (error) {
       patchVersionThirdPartySyncStatus(record.id, previous);
-      message.error(error instanceof Error ? error.message : "更新三方对接状态失败");
+      message.error(error instanceof Error ? error.message : "更新三方同步状态失败");
     }
   };
 
@@ -470,6 +473,7 @@ export default function ProjectListPage() {
         report_original_name: next.report_original_name ?? null,
         report_size_bytes: next.report_size_bytes ?? null,
         report_uploaded_at: next.report_uploaded_at ?? null,
+        analysis_status: next.analysis_status ?? true,
       });
       message.success("报告已上传");
     } catch (error) {
@@ -733,22 +737,26 @@ export default function ProjectListPage() {
         );
       },
     },
-    {
-      title: "三方对接",
-      key: "third_party_sync_status",
-      width: 110,
-      render: (_, record) => {
-        if (record.row_type !== "version") {
-          return <EllipsisTooltip title="-">-</EllipsisTooltip>;
-        }
-        const meta = THIRD_PARTY_SYNC_STATUS_MAP[record.third_party_sync_status ?? "unsynced"];
-        return (
-          <EllipsisTooltip title={meta.label}>
-            <Tag color={meta.color}>{meta.label}</Tag>
-          </EllipsisTooltip>
-        );
-      },
-    },
+    ...(isSuperAdmin
+      ? [
+          {
+            title: "三方同步状态",
+            key: "third_party_sync_status",
+            width: 130,
+            render: (_: unknown, record: ProjectTreeRow) => {
+              if (record.row_type !== "version") {
+                return <EllipsisTooltip title="-">-</EllipsisTooltip>;
+              }
+              const meta = THIRD_PARTY_SYNC_STATUS_MAP[record.third_party_sync_status ?? "unsynced"];
+              return (
+                <EllipsisTooltip title={meta.label}>
+                  <Tag color={meta.color}>{meta.label}</Tag>
+                </EllipsisTooltip>
+              );
+            },
+          },
+        ]
+      : []),
     {
       title: "报告状态",
       key: "report_status",

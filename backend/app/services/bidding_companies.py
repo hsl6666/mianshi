@@ -195,6 +195,7 @@ def replace_bid_report(
     attachment.report_size_bytes = size_bytes
     attachment.report_content_type = content_type
     attachment.report_uploaded_at = now
+    attachment.analysis_status = True
     if attachment.company:
         attachment.company.updated_at = now
     db.commit()
