@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -28,6 +28,7 @@ from app.services import bidding_companies as company_service
 from app.services import bidding_project_groups as group_service
 from app.services import bidding_projects as service
 from app.services import operation_logs as log_service
+from app.services.feishu_notifications import BidUploadNotification, notify_bid_upload
 from app.services.files import is_likely_report_file, save_upload
 
 router = APIRouter(
@@ -200,6 +201,7 @@ def get_bidding_project(
 @router.post("", response_model=ProjectDetail, status_code=201)
 async def create_bidding_project(
     request: Request,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
     name: str = Form(...),
@@ -299,13 +301,26 @@ async def create_bidding_project(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     company = company_service.get_or_create_company(db, project, name=payload.participating_units)
-    company_service.add_bid_version(
+    attachment = company_service.add_bid_version(
         db,
         company,
         original_name=original_name,
         stored_name=stored_name,
         size_bytes=size_bytes,
         content_type=content_type,
+    )
+    background_tasks.add_task(
+        notify_bid_upload,
+        BidUploadNotification(
+            group_name=group.name,
+            project_name=project.name,
+            company_name=company.name,
+            original_name=attachment.original_name,
+            version_number=attachment.version_number or 1,
+            size_bytes=attachment.size_bytes,
+            uploaded_by=current_user.username,
+            uploaded_at=attachment.created_at,
+        ),
     )
 
     project = service.get_project(db, project.id, current_user.owner_filter)

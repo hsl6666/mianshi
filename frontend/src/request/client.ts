@@ -2,7 +2,7 @@ import axios from "axios";
 import { getAccessToken, clearAllTokens, clearUsername } from "@/utils/cookie";
 import { ROUTE_PATHS } from "@/constants/common";
 
-const baseURL = import.meta.env.DEV ? "" : import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8010";
+const baseURL = import.meta.env.DEV ? "" : (import.meta.env.VITE_API_BASE_URL ?? "");
 
 export const apiClient = axios.create({
   baseURL,

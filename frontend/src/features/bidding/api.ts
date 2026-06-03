@@ -73,11 +73,9 @@ export async function createGroup(
   formData.append("name", name.trim());
   if (tenderDoc) formData.append("tender_doc", tenderDoc);
   if (bidOpeningAt) formData.append("bid_opening_at", formatChinaTimeForApi(bidOpeningAt));
-  const { data } = await apiClient.post<BiddingProjectGroupDetail>(
-    "/api/bidding-project-groups",
-    formData,
-    { headers: { "Content-Type": "multipart/form-data" } },
-  );
+  const { data } = await apiClient.post<BiddingProjectGroupDetail>("/api/bidding-project-groups", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
   return data;
 }
 
@@ -174,7 +172,7 @@ export async function uploadBidVersionReport(args: {
 }
 
 export function getGroupAttachmentDownloadUrl(groupId: number, attachmentId: number) {
-  const base = import.meta.env.DEV ? "" : import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8010";
+  const base = import.meta.env.DEV ? "" : (import.meta.env.VITE_API_BASE_URL ?? "");
   return `${base}/api/bidding-project-groups/${groupId}/attachments/${attachmentId}/download`;
 }
 

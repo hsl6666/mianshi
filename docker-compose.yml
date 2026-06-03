@@ -2,11 +2,16 @@ services:
   backend:
     build:
       context: ./backend
+    container_name: mianshi-backend
+    restart: unless-stopped
     environment:
       DATABASE_URL: sqlite:///./data/app.db
-      FRONTEND_ORIGIN: http://127.0.0.1:5173
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://127.0.0.1}
+      FEISHU_BID_NOTIFY_WEBHOOK_URL: ${FEISHU_BID_NOTIFY_WEBHOOK_URL:-}
+      FEISHU_BID_NOTIFY_SECRET: ${FEISHU_BID_NOTIFY_SECRET:-}
+      FEISHU_BID_NOTIFY_AT_USER_ID: ${FEISHU_BID_NOTIFY_AT_USER_ID:-}
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./backend/data:/app/data
 
@@ -14,8 +19,10 @@ services:
     build:
       context: ./frontend
       args:
-        VITE_API_BASE_URL: http://127.0.0.1:8000
+        VITE_API_BASE_URL: ""
+    container_name: mianshi-frontend
+    restart: unless-stopped
     ports:
-      - "5173:80"
+      - "127.0.0.1:20838:80"
     depends_on:
       - backend

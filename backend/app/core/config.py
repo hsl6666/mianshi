@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     jwt_secret: str = "quanzhan-dev-jwt-secret-change-in-production"
     jwt_access_expire_hours: int = 12
     jwt_refresh_expire_hours: int = 168
+    feishu_bid_notify_webhook_url: str | None = None
+    feishu_bid_notify_secret: str | None = None
+    feishu_bid_notify_at_user_id: str | None = None
+    feishu_bid_notify_timeout_seconds: float = 5.0
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

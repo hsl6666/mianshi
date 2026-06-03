@@ -17,7 +17,7 @@ export const setTokenCookie = (
   key: string,
   value: string,
   expires: number = 7,
-  secure: boolean = process.env.NODE_ENV === "production",
+  secure: boolean = false,
 ) => {
   Cookies.set(key, value, {
     expires,
