@@ -682,6 +682,40 @@ def _migrate_bid_file_sync_and_report_fields() -> None:
         )
 
 
+def _migrate_bid_file_sync_metadata() -> None:
+    """Store local analysis-platform association IDs returned by third-party sync ACK."""
+    inspector = inspect(engine)
+    if "project_attachments" not in inspector.get_table_names():
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS app_migrations (
+                    name VARCHAR(128) PRIMARY KEY,
+                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        marker = conn.execute(
+            text("SELECT name FROM app_migrations WHERE name = :name"),
+            {"name": "bid_file_sync_metadata_v1"},
+        ).fetchone()
+        if marker:
+            return
+
+        columns = {col["name"] for col in inspector.get_columns("project_attachments")}
+        if "third_party_sync_metadata" not in columns:
+            conn.execute(text("ALTER TABLE project_attachments ADD COLUMN third_party_sync_metadata TEXT"))
+
+        conn.execute(
+            text("INSERT INTO app_migrations (name) VALUES (:name)"),
+            {"name": "bid_file_sync_metadata_v1"},
+        )
+
+
 def init_db() -> None:
     from app import models  # noqa: F401
 
@@ -695,6 +729,7 @@ def init_db() -> None:
     _migrate_bid_analysis_status()
     _migrate_third_party_sync_status()
     _migrate_bid_file_sync_and_report_fields()
+    _migrate_bid_file_sync_metadata()
     _migrate_operation_log_timezone()
     _migrate_attachment_timezone()
     _migrate_bidding_entity_timezone()

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import get_settings
@@ -12,14 +12,25 @@ from app.models import (
     BiddingCompany,
     BiddingProject,
     BiddingProjectGroup,
+    GroupAttachment,
     ProjectAttachment,
     ProjectStatus,
     ThirdPartySyncStatus,
 )
 
 
-def tender_attachments(project: BiddingProject) -> list[ProjectAttachment]:
-    return [a for a in project.attachments if a.company_id is None and a.attachment_type == AttachmentType.tender_doc]
+def tender_attachments(project: BiddingProject) -> list[ProjectAttachment | GroupAttachment]:
+    project_tenders = [
+        a
+        for a in project.attachments
+        if a.company_id is None and a.attachment_type == AttachmentType.tender_doc
+    ]
+    group_tenders = [
+        a
+        for a in (project.group.attachments if project.group else [])
+        if a.attachment_type == AttachmentType.tender_doc
+    ]
+    return project_tenders or group_tenders
 
 
 def company_status(company: BiddingCompany, project: BiddingProject, now: datetime | None = None) -> ProjectStatus:
@@ -185,6 +196,9 @@ def get_next_unsynced_project(db: Session) -> BiddingProject | None:
         ProjectAttachment.attachment_type == AttachmentType.tender_doc,
         ProjectAttachment.company_id.is_(None),
     )
+    tender_group_ids = select(GroupAttachment.group_id).where(
+        GroupAttachment.attachment_type == AttachmentType.tender_doc,
+    )
     unsynced_project_ids = (
         select(BiddingCompany.project_id)
         .join(ProjectAttachment, ProjectAttachment.company_id == BiddingCompany.id)
@@ -197,18 +211,37 @@ def get_next_unsynced_project(db: Session) -> BiddingProject | None:
     query = (
         select(BiddingProject)
         .where(
-            BiddingProject.id.in_(tender_project_ids),
+            or_(
+                BiddingProject.id.in_(tender_project_ids),
+                BiddingProject.group_id.in_(tender_group_ids),
+            ),
             BiddingProject.id.in_(unsynced_project_ids),
         )
         .options(
-            selectinload(BiddingProject.group),
+            selectinload(BiddingProject.group).selectinload(BiddingProjectGroup.attachments),
             selectinload(BiddingProject.attachments),
             selectinload(BiddingProject.companies).selectinload(BiddingCompany.attachments),
         )
         .order_by(BiddingProject.created_at.asc(), BiddingProject.id.asc())
-        .limit(1)
     )
-    return db.scalar(query)
+    for project in db.scalars(query).unique().all():
+        if not any(attachment_file_exists(attachment) for attachment in tender_attachments(project)):
+            continue
+        has_existing_unsynced_bid = any(
+            attachment.attachment_type == AttachmentType.bid_doc
+            and attachment.third_party_sync_status == ThirdPartySyncStatus.unsynced
+            and attachment_file_exists(attachment)
+            for company in project.companies
+            for attachment in company.attachments
+        )
+        if has_existing_unsynced_bid:
+            return project
+    return None
+
+
+def attachment_file_exists(attachment: ProjectAttachment | GroupAttachment) -> bool:
+    settings = get_settings()
+    return (settings.uploads_dir / attachment.stored_name).exists()
 
 
 def mark_third_party_synced(db: Session, project: BiddingProject) -> BiddingProject:

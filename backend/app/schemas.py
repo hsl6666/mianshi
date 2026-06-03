@@ -245,6 +245,25 @@ class ThirdPartyBiddingFileInfo(BaseModel):
     bid_files: List[ThirdPartyBidFileOut] = []
 
 
+class ThirdPartyBidSyncAckIn(BaseModel):
+    status: Literal["synced"] = "synced"
+    source_system: Optional[str] = "mianshi"
+    external_record_id: Optional[str] = None
+    local_project_id: str
+    local_company_id: str
+    local_bid_file_id: str
+    local_task_id: Optional[str] = None
+    test_marker: Optional[str] = None
+
+
+class ThirdPartyBidSyncAckOut(BaseModel):
+    id: int
+    project_id: int
+    company_id: int
+    third_party_sync_status: ThirdPartySyncStatus
+    third_party_sync_metadata: Optional[str] = None
+
+
 class LoginRequest(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=128)

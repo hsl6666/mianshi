@@ -14,7 +14,6 @@ from app.schemas import (
     BidVersionListItem,
     CompanyDetail,
     CompanyListItem,
-    FeedbackCreate,
     GroupTreeItem,
     PaginatedProjectTree,
     ProjectCreate,
@@ -30,6 +29,7 @@ from app.services import bidding_projects as service
 from app.services import operation_logs as log_service
 from app.services.feishu_notifications import BidUploadNotification, notify_bid_upload
 from app.services.files import is_likely_report_file, save_upload
+from app.services.third_party_sync_events import broadcast_bid_upload
 
 router = APIRouter(
     prefix="/api/bidding-projects",
@@ -309,6 +309,7 @@ async def create_bidding_project(
         size_bytes=size_bytes,
         content_type=content_type,
     )
+    await broadcast_bid_upload(db, attachment.id)
     background_tasks.add_task(
         notify_bid_upload,
         BidUploadNotification(

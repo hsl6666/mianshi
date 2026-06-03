@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from sqlalchemy import func, select
+import json
+
+from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import get_settings
@@ -160,6 +162,43 @@ def update_bid_third_party_sync_status(
     attachment.third_party_sync_status = third_party_sync_status
     if attachment.company:
         attachment.company.updated_at = china_now()
+    db.commit()
+    db.refresh(attachment)
+    return attachment
+
+
+def ack_bid_third_party_sync(
+    db: Session,
+    attachment: ProjectAttachment,
+    *,
+    metadata: dict[str, object],
+) -> ProjectAttachment:
+    now = china_now()
+    attachment.third_party_sync_status = ThirdPartySyncStatus.synced
+    attachment.third_party_sync_metadata = json.dumps(
+        metadata,
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    if attachment.company:
+        attachment.company.updated_at = now
+
+    project = db.get(BiddingProject, attachment.project_id)
+    if project is not None:
+        remaining_unsynced_bid_id = db.scalar(
+            select(ProjectAttachment.id)
+            .where(
+                ProjectAttachment.project_id == project.id,
+                ProjectAttachment.id != attachment.id,
+                ProjectAttachment.attachment_type == AttachmentType.bid_doc,
+                ProjectAttachment.third_party_sync_status == ThirdPartySyncStatus.unsynced,
+            )
+            .limit(1)
+        )
+        if remaining_unsynced_bid_id is None:
+            project.third_party_sync_status = ThirdPartySyncStatus.synced
+            project.updated_at = now
+
     db.commit()
     db.refresh(attachment)
     return attachment

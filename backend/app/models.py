@@ -135,6 +135,7 @@ class ProjectAttachment(Base):
         default=ThirdPartySyncStatus.unsynced,
         nullable=False,
     )
+    third_party_sync_metadata: Mapped[Optional[str]] = mapped_column(Text)
     report_original_name: Mapped[Optional[str]] = mapped_column(String(255))
     report_stored_name: Mapped[Optional[str]] = mapped_column(String(255))
     report_content_type: Mapped[Optional[str]] = mapped_column(String(128))
