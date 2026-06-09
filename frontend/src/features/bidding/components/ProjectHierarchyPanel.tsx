@@ -81,8 +81,6 @@ interface ProjectHierarchyPanelProps {
   ) => void;
   onDeleteVersion: (versionId: number) => void;
   onJsonUpload: (record: BidVersionListItem) => void;
-  onAnalyzeVersion: (record: BidVersionListItem) => void;
-  analyzingVersionId: number | null;
 }
 
 interface SelectedCompany {
@@ -123,8 +121,6 @@ export default function ProjectHierarchyPanel({
   onThirdPartySyncStatusChange,
   onDeleteVersion,
   onJsonUpload,
-  onAnalyzeVersion,
-  analyzingVersionId,
 }: ProjectHierarchyPanelProps) {
   const navigate = useNavigate();
   const dateTree = useMemo(() => buildDateTree(groups), [groups]);
@@ -330,17 +326,6 @@ export default function ProjectHierarchyPanel({
             {access.canDownload && (
               <Button type="link" size="small" onClick={() => onDownloadVersion(record)}>
                 下载
-              </Button>
-            )}
-            {access.canAnalysis && (
-              <Button
-                type="link"
-                size="small"
-                loading={analyzingVersionId === record.id || record.report_status === "analyzing"}
-                disabled={record.report_status === "analyzing"}
-                onClick={() => onAnalyzeVersion(record)}
-              >
-                分析
               </Button>
             )}
             {access.canSync && (

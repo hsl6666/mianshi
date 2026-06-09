@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from app.api.deps import (
     get_client_ip,
     get_current_user,
-    get_third_party_access_token,
     require_permission,
     require_report_data_upload_auth,
 )
@@ -19,6 +18,7 @@ from app.services.bidding_serializers import attachment_to_out
 from app.schemas import (
     AttachmentOut,
     BidVersionAnalysisUpdate,
+    BidVersionThirdPartySubmissionBind,
     BidVersionThirdPartySyncStatusUpdate,
     CompanyDetail,
     CompanyUpdate,
@@ -154,40 +154,40 @@ def delete_company(
     )
 
 
-@router.post("/bid-versions/{attachment_id}/analyze", response_model=AttachmentOut)
-async def analyze_bid_version(
+@router.patch("/bid-versions/{attachment_id}/third-party-submission", response_model=AttachmentOut)
+def bind_bid_version_third_party_submission(
     attachment_id: int,
+    payload: BidVersionThirdPartySubmissionBind,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_permission("bidding", "analysis")),
-    third_party_token: str = Depends(get_third_party_access_token),
+    current_user: CurrentUser = Depends(require_permission("bidding", "create")),
 ) -> AttachmentOut:
     attachment = company_service.get_bid_attachment(db, attachment_id, current_user.owner_filter)
     if not attachment:
         raise HTTPException(status_code=404, detail="投标文件版本不存在")
 
-    settings = get_settings()
     try:
-        attachment = await company_service.analyze_bid_version(
+        attachment = company_service.bind_third_party_submission(
             db,
             attachment,
-            access_token=third_party_token,
-            base_url=settings.third_party_api_base_url,
+            submission_file_id=payload.submission_file_id,
+            status=payload.status,
+            report=payload.report,
+            report_data=payload.report_data,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"第三方分析失败：{exc}") from exc
 
     company_name = attachment.company.name if attachment.company else ""
     log_service.record_log(
         db,
         username=current_user.username,
-        action="analyze",
+        action="bind",
         module="bidding",
-        resource_type="bid_version",
+        resource_type="bid_version_third_party_submission",
         resource_id=attachment_id,
-        summary=f"发起投标文件分析 {company_name} v{attachment.version_number or '-'}",
+        summary=f"绑定三方投标文件 {company_name} v{attachment.version_number or '-'}",
+        detail={"submission_file_id": attachment.third_party_submission_file_id},
         ip_address=get_client_ip(request),
     )
     return attachment_to_out(attachment)
@@ -332,7 +332,6 @@ def upload_bid_version_report_data_by_submission_file(
     payload: dict,
     request: Request,
     db: Session = Depends(get_db),
-    api_username: str = Depends(require_report_data_upload_auth),
 ) -> AttachmentOut:
     attachment, report_payload = _resolve_attachment_for_report_data_upload(db, payload)
     attachment = company_service.replace_bid_report_data(
@@ -343,7 +342,7 @@ def upload_bid_version_report_data_by_submission_file(
     company_name = attachment.company.name if attachment.company else ""
     log_service.record_log(
         db,
-        username=api_username,
+        username="report_api",
         action="upload",
         module="bidding",
         resource_type="bid_version_report_data",

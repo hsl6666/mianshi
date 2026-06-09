@@ -269,6 +269,7 @@ class ProjectDetail(BaseModel):
     bid_opening_time: datetime
     project_id: Optional[str] = None
     project_code: Optional[str] = None
+    third_party_db_id: Optional[str] = None
     evaluation_date: Optional[datetime] = None
     status: ProjectStatus
     third_party_sync_status: ThirdPartySyncStatus = ThirdPartySyncStatus.unsynced
@@ -312,6 +313,13 @@ class BidVersionAnalysisUpdate(BaseModel):
 
 class BidVersionThirdPartySyncStatusUpdate(BaseModel):
     third_party_sync_status: ThirdPartySyncStatus
+
+
+class BidVersionThirdPartySubmissionBind(BaseModel):
+    submission_file_id: str = Field(min_length=1, max_length=100)
+    status: Optional[str] = Field(default=None, max_length=40)
+    report: Optional[Dict[str, Any]] = None
+    report_data: Optional[Dict[str, Any]] = None
 
 
 class ProjectThirdPartySyncStatusUpdate(BaseModel):

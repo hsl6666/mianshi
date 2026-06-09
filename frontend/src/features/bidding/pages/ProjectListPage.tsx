@@ -17,13 +17,13 @@ import { ROUTE_PATHS } from "@/constants/common";
 import { FileSearchOutlined, PlusOutlined } from "@ant-design/icons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { usePermission } from "@/hooks/usePermission";
-import { uploadThirdPartyProjectBidFile } from "@/api/wangjun";
+import { analyzeThirdPartySubmissionFile, uploadThirdPartyProjectBidFile } from "@/api/wangjun";
 import { getWangjunAccessToken, isWangjunLoginEnabled } from "@/utils/wangjunAuth";
 import type { BiddingAccess } from "@/constants/permissions";
 import {
-  analyzeBidVersion,
   createGroup,
   syncGroupThirdParty,
+  bindBidVersionThirdPartySubmission,
   createProject,
   deleteBidVersion,
   deleteCompany,
@@ -138,7 +138,6 @@ export default function ProjectListPage() {
   const [jsonUploadTarget, setJsonUploadTarget] = useState<BidVersionListItem | null>(null);
   const [jsonUploadText, setJsonUploadText] = useState("");
   const [jsonUploadSubmitting, setJsonUploadSubmitting] = useState(false);
-  const [analyzingVersionId, setAnalyzingVersionId] = useState<number | null>(null);
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -300,8 +299,54 @@ export default function ProjectListPage() {
           message.success("项目已创建");
         }
       } else {
-        await createProject(values);
-        message.success(presetRevision ? "新版投标文件已上传" : "项目已登记");
+        const created = await createProject(values);
+        const companyName = values.participating_units?.trim() || "";
+        const uploadedVersion = created.companies
+          .find((company) => company.name === companyName)
+          ?.attachments[0];
+        const thirdPartyProjectId = created.third_party_db_id || created.project_id || created.project_code;
+
+        let thirdPartyError: string | null = null;
+        if (values.bid_file && uploadedVersion && isWangjunLoginEnabled()) {
+          if (!getWangjunAccessToken()) {
+            thirdPartyError = "未获取三方 token，未提交三方分析";
+          } else if (!thirdPartyProjectId) {
+            thirdPartyError = "项目组未绑定三方项目 ID";
+          } else {
+            try {
+              const thirdParty = await analyzeThirdPartySubmissionFile({
+                projectId: String(thirdPartyProjectId),
+                projectCode: created.project_code,
+                companyName,
+                responseFile: values.bid_file,
+                thirdPartyFileName: values.bid_file.name,
+                thirdPartyCompanyName: companyName,
+              });
+              const submissionFileId = thirdParty.submission_file?.id?.trim();
+              if (!submissionFileId) {
+                thirdPartyError = "三方响应缺少 submission_file.id";
+              } else {
+                await bindBidVersionThirdPartySubmission({
+                  attachmentId: uploadedVersion.id,
+                  submissionFileId,
+                  status: thirdParty.status,
+                  report: thirdParty.report,
+                  reportData: thirdParty.report_data,
+                });
+              }
+            } catch (error) {
+              thirdPartyError = error instanceof Error ? error.message : "三方分析提交失败";
+            }
+          }
+        } else if (values.bid_file && !uploadedVersion) {
+          thirdPartyError = "未找到本平台投标文件版本，无法绑定三方 submission_file.id";
+        }
+
+        if (thirdPartyError) {
+          message.warning(`投标文件已上传，但三方分析提交未完成：${thirdPartyError}`);
+        } else {
+          message.success(presetRevision ? "新版投标文件已上传" : "项目已登记");
+        }
       }
       setFormOpen(false);
       setActiveProject(null);
@@ -455,29 +500,6 @@ export default function ProjectListPage() {
     await previewBidVersion({ attachmentId: record.id, filename: record.original_name });
   };
 
-  const patchVersionReportStatus = (
-    attachmentId: number,
-    reportStatus: BidVersionListItem["report_status"],
-    extra?: Partial<BidVersionListItem>,
-  ) => {
-    setItems((prev) =>
-      prev.map((group) => ({
-        ...group,
-        children: group.children.map((project) => ({
-          ...project,
-          children: project.children.map((company) => ({
-            ...company,
-            children: company.children.map((version) =>
-              version.id === attachmentId
-                ? { ...version, report_status: reportStatus, ...extra }
-                : version,
-            ),
-          })),
-        })),
-      })),
-    );
-  };
-
   const patchVersionAnalysisStatus = (attachmentId: number, analysisStatus: boolean) => {
     setItems((prev) =>
       prev.map((group) => ({
@@ -560,38 +582,6 @@ export default function ProjectListPage() {
     );
   };
 
-  const handleAnalyzeVersion = async (record: BidVersionListItem) => {
-    const thirdPartyAccessToken = getWangjunAccessToken();
-
-    setAnalyzingVersionId(record.id);
-    patchVersionReportStatus(record.id, "analyzing");
-
-    try {
-      const next = await analyzeBidVersion({
-        attachmentId: record.id,
-        thirdPartyAccessToken,
-      });
-      patchVersionReportStatus(record.id, next.report_status ?? "completed", {
-        analysis_status: next.analysis_status ?? record.analysis_status,
-        third_party_submission_file_id:
-          next.third_party_submission_file_id ?? record.third_party_submission_file_id,
-        report_has_data: next.report_has_data ?? record.report_has_data,
-        report_original_name: next.report_original_name ?? record.report_original_name,
-        report_size_bytes: next.report_size_bytes ?? record.report_size_bytes,
-        report_uploaded_at: next.report_uploaded_at ?? record.report_uploaded_at,
-        report_title: next.report_title ?? record.report_title,
-        report_final_score: next.report_final_score ?? record.report_final_score,
-        report_rating: next.report_rating ?? record.report_rating,
-      });
-      message.success(next.report_status === "analyzing" ? "分析已提交" : "分析完成");
-    } catch (error) {
-      patchVersionReportStatus(record.id, "failed", { analysis_status: record.analysis_status });
-      message.error(error instanceof Error ? error.message : "分析失败");
-    } finally {
-      setAnalyzingVersionId(null);
-    }
-  };
-
   const handleAnalysisStatusChange = async (record: BidVersionListItem, analysisStatus: boolean) => {
     const previous = record.analysis_status;
     patchVersionAnalysisStatus(record.id, analysisStatus);
@@ -672,7 +662,7 @@ export default function ProjectListPage() {
       null;
 
     if (!submissionFileId) {
-      message.error("JSON 中需包含 submission_file_id，或请先完成分析以获取关联 ID");
+      message.error("JSON 中需包含 submission_file_id，请确认投标文件上传时已成功提交至三方");
       return;
     }
     if (!payload.submission_file_id) {
@@ -849,8 +839,6 @@ export default function ProjectListPage() {
               onThirdPartySyncStatusChange={handleThirdPartySyncStatusChange}
               access={biddingAccess}
               onDeleteVersion={handleDeleteBidVersion}
-              onAnalyzeVersion={handleAnalyzeVersion}
-              analyzingVersionId={analyzingVersionId}
             />
             {paginationNode}
           </>
@@ -880,8 +868,6 @@ export default function ProjectListPage() {
               onThirdPartySyncStatusChange={handleThirdPartySyncStatusChange}
               onDeleteVersion={handleDeleteBidVersion}
               onJsonUpload={openJsonUpload}
-              onAnalyzeVersion={handleAnalyzeVersion}
-              analyzingVersionId={analyzingVersionId}
             />
             {paginationNode}
           </>

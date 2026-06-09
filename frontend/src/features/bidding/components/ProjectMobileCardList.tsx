@@ -63,8 +63,6 @@ interface ProjectMobileCardListProps {
   ) => void;
   access: BiddingAccess;
   onDeleteVersion: (id: number) => void;
-  onAnalyzeVersion: (record: BidVersionListItem) => void;
-  analyzingVersionId: number | null;
 }
 
 function hasVersionReport(record: Pick<BidVersionListItem, "report_has_data">) {
@@ -94,8 +92,6 @@ export default function ProjectMobileCardList({
   onThirdPartySyncStatusChange,
   access,
   onDeleteVersion,
-  onAnalyzeVersion,
-  analyzingVersionId,
 }: ProjectMobileCardListProps) {
   const dateTree = useMemo(() => buildDateTree(groups), [groups]);
   const [activeKeys, setActiveKeys] = useState<string[]>([]);
@@ -278,21 +274,6 @@ export default function ProjectMobileCardList({
                                               size="small"
                                               icon={<DownloadOutlined />}
                                               onClick={() => onDownloadVersion(version)}
-                                            />
-                                          </Tooltip>
-                                        )}
-                                        {access.canAnalysis && (
-                                          <Tooltip title="分析">
-                                            <Button
-                                              type="link"
-                                              size="small"
-                                              icon={<FileSearchOutlined />}
-                                              loading={
-                                                analyzingVersionId === version.id ||
-                                                version.report_status === "analyzing"
-                                              }
-                                              disabled={version.report_status === "analyzing"}
-                                              onClick={() => onAnalyzeVersion(version)}
                                             />
                                           </Tooltip>
                                         )}

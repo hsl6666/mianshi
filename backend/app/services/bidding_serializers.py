@@ -83,5 +83,6 @@ def project_group_context(project: BiddingProject) -> dict:
         "bid_opening_time": project.bid_opening_at,
         "project_id": group.third_party_project_id,
         "project_code": group.project_code,
+        "third_party_db_id": group.third_party_db_id,
         "evaluation_date": group.evaluation_date,
     }

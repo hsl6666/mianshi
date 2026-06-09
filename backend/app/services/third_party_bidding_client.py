@@ -120,7 +120,7 @@ async def analyze_submission_file(
     data: dict[str, str] = {
         "project_id": project_id,
         "company_name": company_name,
-        "enable_analysis": "false",
+        "enable_analysis": "true",
     }
     if project_code:
         data["project_code"] = project_code

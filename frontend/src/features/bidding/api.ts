@@ -140,6 +140,25 @@ export async function createProject(values: ProjectFormValues): Promise<BiddingP
   return data;
 }
 
+export async function bindBidVersionThirdPartySubmission(args: {
+  attachmentId: number;
+  submissionFileId: string;
+  status?: string;
+  report?: Record<string, unknown>;
+  reportData?: Record<string, unknown>;
+}): Promise<ProjectAttachment> {
+  const { data } = await apiClient.patch<ProjectAttachment>(
+    `/api/bid-versions/${args.attachmentId}/third-party-submission`,
+    {
+      submission_file_id: args.submissionFileId,
+      status: args.status,
+      report: args.report,
+      report_data: args.reportData,
+    },
+  );
+  return data;
+}
+
 export async function updateProject(
   id: number,
   values: Required<Pick<ProjectFormValues, "name" | "participating_units">>,
@@ -193,22 +212,6 @@ export async function deleteCompany(id: number) {
 
 export async function deleteBidVersion(id: number) {
   await apiClient.delete(`/api/bid-versions/${id}`);
-}
-
-export async function analyzeBidVersion(args: {
-  attachmentId: number;
-  thirdPartyAccessToken?: string | null;
-}): Promise<ProjectAttachment> {
-  const headers: Record<string, string> = {};
-  if (args.thirdPartyAccessToken) {
-    headers["X-Third-Party-Access-Token"] = args.thirdPartyAccessToken;
-  }
-  const { data } = await apiClient.post<ProjectAttachment>(
-    `/api/bid-versions/${args.attachmentId}/analyze`,
-    {},
-    { headers },
-  );
-  return data;
 }
 
 export async function updateBidVersionAnalysisStatus(args: {

@@ -45,6 +45,7 @@ export interface BiddingProjectGroupListItem {
   bid_opening_time: string;
   project_id?: string | null;
   project_code?: string | null;
+  third_party_db_id?: string | null;
   evaluation_date?: string | null;
   created_at: string;
   updated_at: string;
@@ -163,6 +164,7 @@ export interface BiddingProjectDetail {
   bid_opening_time: string;
   project_id?: string | null;
   project_code?: string | null;
+  third_party_db_id?: string | null;
   evaluation_date?: string | null;
   status: ProjectStatus;
   third_party_sync_status: ThirdPartySyncStatus;

@@ -89,35 +89,6 @@ def require_report_data_upload_auth(
     )
 
 
-def get_third_party_access_token(
-    x_third_party_access_token: str | None = Header(default=None, alias="X-Third-Party-Access-Token"),
-) -> str:
-    token = resolve_third_party_access_token(x_third_party_access_token)
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="未配置第三方访问令牌，请开启第三方登录或使用服务端 THIRD_PARTY_ACCESS_TOKEN",
-        )
-    return token
-
-
-def resolve_third_party_access_token(
-    x_third_party_access_token: str | None = None,
-) -> str | None:
-    if x_third_party_access_token and x_third_party_access_token.strip():
-        return x_third_party_access_token.strip()
-    settings = get_settings()
-    if settings.third_party_access_token:
-        return settings.third_party_access_token
-    return None
-
-
-def get_third_party_access_token_optional(
-    x_third_party_access_token: str | None = Header(default=None, alias="X-Third-Party-Access-Token"),
-) -> str | None:
-    return resolve_third_party_access_token(x_third_party_access_token)
-
-
 def get_client_ip(request: Request) -> str | None:
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:

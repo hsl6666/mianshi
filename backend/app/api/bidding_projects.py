@@ -5,7 +5,11 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_client_ip, get_current_user, require_permission
+from app.api.deps import (
+    get_client_ip,
+    get_current_user,
+    require_permission,
+)
 from app.core.security import CurrentUser
 from app.core.config import get_settings
 from app.db import get_db

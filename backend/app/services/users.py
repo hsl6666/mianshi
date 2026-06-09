@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.password import hash_password, verify_password
 from app.core.roles import SUPER_ADMIN_USERNAME, is_super_admin
 from app.models import User, UserRole
-from app.services.roles import SUPER_ADMIN_ROLE_CODE, get_role_by_code, get_role_by_id
+from app.services.roles import DEFAULT_USER_ROLE_CODE, SUPER_ADMIN_ROLE_CODE, get_role_by_code, get_role_by_id
 
 
 def get_user_by_username(db: Session, username: str) -> User | None:

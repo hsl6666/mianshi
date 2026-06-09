@@ -35,3 +35,17 @@ export interface ThirdPartyProjectCreateResponse {
     evaluation_date?: string;
   };
 }
+
+export interface ThirdPartySubmissionAnalyzeResponse {
+  status?: string;
+  project_id?: string;
+  project_code?: string;
+  message?: string;
+  submission_file?: {
+    id: string;
+    [key: string]: unknown;
+  };
+  report?: Record<string, unknown>;
+  report_data?: Record<string, unknown>;
+  [key: string]: unknown;
+}

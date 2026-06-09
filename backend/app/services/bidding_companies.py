@@ -214,6 +214,9 @@ async def analyze_bid_version(
     access_token: str,
     base_url: str,
 ) -> ProjectAttachment:
+    if attachment.third_party_submission_file_id:
+        return attachment
+
     if attachment.report_status == ReportStatus.analyzing:
         raise ValueError("该版本正在分析中，请稍后再试")
 
@@ -260,8 +263,32 @@ async def analyze_bid_version(
         raise
 
     now = china_now()
-    if result.submission_file and result.submission_file.id:
-        attachment.third_party_submission_file_id = result.submission_file.id
+    submission_file_id = result.submission_file.id if result.submission_file else None
+    if not submission_file_id:
+        attachment.report_status = ReportStatus.failed
+        if attachment.company:
+            attachment.company.updated_at = now
+        db.commit()
+        db.refresh(attachment)
+        raise ValueError("第三方响应缺少 submission_file.id，无法关联投标文件")
+
+    existing = db.scalar(
+        select(ProjectAttachment.id)
+        .where(
+            ProjectAttachment.third_party_submission_file_id == submission_file_id,
+            ProjectAttachment.id != attachment.id,
+        )
+        .limit(1)
+    )
+    if existing is not None:
+        attachment.report_status = ReportStatus.failed
+        if attachment.company:
+            attachment.company.updated_at = now
+        db.commit()
+        db.refresh(attachment)
+        raise ValueError(f"第三方 submission_file.id={submission_file_id} 已关联其他投标文件")
+
+    attachment.third_party_submission_file_id = submission_file_id
 
     report_payload = result.report or result.report_data
     if isinstance(report_payload, dict):
@@ -306,6 +333,50 @@ def update_bid_third_party_sync_status(
     attachment.third_party_sync_status = third_party_sync_status
     if attachment.company:
         attachment.company.updated_at = china_now()
+    db.commit()
+    db.refresh(attachment)
+    return attachment
+
+
+def bind_third_party_submission(
+    db: Session,
+    attachment: ProjectAttachment,
+    *,
+    submission_file_id: str,
+    status: str | None = None,
+    report: dict | None = None,
+    report_data: dict | None = None,
+) -> ProjectAttachment:
+    normalized_id = submission_file_id.strip()
+    if not normalized_id:
+        raise ValueError("submission_file_id 不能为空")
+
+    existing = db.scalar(
+        select(ProjectAttachment.id)
+        .where(
+            ProjectAttachment.third_party_submission_file_id == normalized_id,
+            ProjectAttachment.id != attachment.id,
+        )
+        .limit(1)
+    )
+    if existing is not None:
+        raise ValueError(f"第三方 submission_file.id={normalized_id} 已关联其他投标文件")
+
+    now = china_now()
+    attachment.third_party_submission_file_id = normalized_id
+    report_payload = report if isinstance(report, dict) else report_data
+    if isinstance(report_payload, dict):
+        attachment.report_data = json.dumps(report_payload, ensure_ascii=False, sort_keys=True)
+        attachment.report_uploaded_at = now
+        attachment.report_status = ReportStatus.completed
+        attachment.analysis_status = True
+    elif (status or "").lower() == "failed":
+        attachment.report_status = ReportStatus.failed
+    else:
+        attachment.report_status = ReportStatus.analyzing
+
+    if attachment.company:
+        attachment.company.updated_at = now
     db.commit()
     db.refresh(attachment)
     return attachment
