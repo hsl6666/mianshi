@@ -4,10 +4,18 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_client_ip, get_current_user, require_super_admin
+from app.api.deps import (
+    get_client_ip,
+    get_current_user,
+    get_third_party_access_token,
+    require_permission,
+    require_report_data_upload_auth,
+)
 from app.core.config import get_settings
 from app.core.security import CurrentUser
 from app.db import get_db
+from app.models import ProjectAttachment
+from app.services.bidding_serializers import attachment_to_out
 from app.schemas import (
     AttachmentOut,
     BidVersionAnalysisUpdate,
@@ -16,6 +24,8 @@ from app.schemas import (
     CompanyUpdate,
     FeedbackCreate,
     FeedbackOut,
+    TechnicalReviewReportData,
+    TechnicalReviewReportOut,
 )
 from app.services import bidding_companies as company_service
 from app.services import operation_logs as log_service
@@ -24,7 +34,6 @@ from app.services.files import save_upload
 router = APIRouter(
     prefix="/api",
     tags=["bidding-companies"],
-    dependencies=[Depends(get_current_user)],
 )
 
 
@@ -40,11 +49,11 @@ def _to_company_detail(company) -> CompanyDetail:
     )
 
 
-@router.get("/bidding-companies/{company_id}", response_model=CompanyDetail)
+@router.get("/bidding-companies/{company_id}", response_model=CompanyDetail, dependencies=[Depends(require_permission("bidding", "view"))])
 def get_company(
     company_id: int,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("bidding", "view")),
 ) -> CompanyDetail:
     company = company_service.get_company(db, company_id, current_user.owner_filter)
     if not company:
@@ -52,13 +61,13 @@ def get_company(
     return _to_company_detail(company)
 
 
-@router.post("/bidding-companies/{company_id}/feedback", response_model=FeedbackOut)
+@router.post("/bidding-companies/{company_id}/feedback", response_model=FeedbackOut, dependencies=[Depends(require_permission("bidding", "feedback"))])
 def submit_company_feedback(
     company_id: int,
     payload: FeedbackCreate,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("bidding", "feedback")),
 ) -> FeedbackOut:
     company = company_service.get_company(db, company_id, current_user.owner_filter)
     if not company:
@@ -87,12 +96,12 @@ def submit_company_feedback(
     return FeedbackOut.model_validate(feedback)
 
 
-@router.patch("/bidding-companies/{company_id}", response_model=CompanyDetail)
+@router.patch("/bidding-companies/{company_id}", response_model=CompanyDetail, dependencies=[Depends(require_permission("bidding", "edit"))])
 def update_company(
     company_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("bidding", "edit")),
     name: Optional[str] = Form(None),
 ) -> CompanyDetail:
     company = company_service.get_company(db, company_id, current_user.owner_filter)
@@ -121,12 +130,12 @@ def update_company(
     return _to_company_detail(company)
 
 
-@router.delete("/bidding-companies/{company_id}", status_code=204)
+@router.delete("/bidding-companies/{company_id}", status_code=204, dependencies=[Depends(require_permission("bidding", "delete"))])
 def delete_company(
     company_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("bidding", "delete")),
 ) -> None:
     company = company_service.get_company(db, company_id, current_user.owner_filter)
     if not company:
@@ -145,13 +154,52 @@ def delete_company(
     )
 
 
+@router.post("/bid-versions/{attachment_id}/analyze", response_model=AttachmentOut)
+async def analyze_bid_version(
+    attachment_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_permission("bidding", "analysis")),
+    third_party_token: str = Depends(get_third_party_access_token),
+) -> AttachmentOut:
+    attachment = company_service.get_bid_attachment(db, attachment_id, current_user.owner_filter)
+    if not attachment:
+        raise HTTPException(status_code=404, detail="投标文件版本不存在")
+
+    settings = get_settings()
+    try:
+        attachment = await company_service.analyze_bid_version(
+            db,
+            attachment,
+            access_token=third_party_token,
+            base_url=settings.third_party_api_base_url,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"第三方分析失败：{exc}") from exc
+
+    company_name = attachment.company.name if attachment.company else ""
+    log_service.record_log(
+        db,
+        username=current_user.username,
+        action="analyze",
+        module="bidding",
+        resource_type="bid_version",
+        resource_id=attachment_id,
+        summary=f"发起投标文件分析 {company_name} v{attachment.version_number or '-'}",
+        ip_address=get_client_ip(request),
+    )
+    return attachment_to_out(attachment)
+
+
 @router.patch("/bid-versions/{attachment_id}/analysis-status", response_model=BidVersionAnalysisUpdate)
 def update_bid_version_analysis_status(
     attachment_id: int,
     payload: BidVersionAnalysisUpdate,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_super_admin),
+    current_user: CurrentUser = Depends(require_permission("bidding", "analysis")),
 ) -> BidVersionAnalysisUpdate:
     attachment = company_service.get_bid_attachment(db, attachment_id, current_user.owner_filter)
     if not attachment:
@@ -183,7 +231,7 @@ def update_bid_version_third_party_sync_status(
     payload: BidVersionThirdPartySyncStatusUpdate,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_super_admin),
+    current_user: CurrentUser = Depends(require_permission("bidding", "sync")),
 ) -> BidVersionThirdPartySyncStatusUpdate:
     attachment = company_service.get_bid_attachment(db, attachment_id, current_user.owner_filter)
     if not attachment:
@@ -215,7 +263,7 @@ async def upload_bid_version_report(
     request: Request,
     report_file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_super_admin),
+    current_user: CurrentUser = Depends(require_permission("bidding", "report_upload")),
 ) -> AttachmentOut:
     attachment = company_service.get_bid_attachment(db, attachment_id, current_user.owner_filter)
     if not attachment:
@@ -250,11 +298,121 @@ async def upload_bid_version_report(
     return AttachmentOut.model_validate(attachment)
 
 
-@router.get("/bid-versions/{attachment_id}/report/download")
+def _resolve_attachment_for_report_data_upload(
+    db: Session,
+    payload: dict,
+    *,
+    attachment_id: int | None = None,
+) -> tuple[ProjectAttachment, dict]:
+    submission_file_id = company_service.extract_submission_file_id(payload)
+    if submission_file_id:
+        attachment = company_service.get_bid_attachment_by_submission_file_id(db, submission_file_id)
+        if not attachment:
+            raise HTTPException(
+                status_code=404,
+                detail=f"未找到 submission_file_id={submission_file_id} 对应的投标文件版本",
+            )
+        if attachment_id is not None and attachment.id != attachment_id:
+            raise HTTPException(status_code=400, detail="submission_file_id 与路径中的版本 ID 不一致")
+    elif attachment_id is not None:
+        attachment = company_service.get_bid_attachment(db, attachment_id)
+        if not attachment:
+            raise HTTPException(status_code=404, detail="投标文件版本不存在")
+    else:
+        raise HTTPException(status_code=400, detail="缺少 submission_file_id，无法关联投标文件版本")
+
+    report_payload = payload.get("report") if isinstance(payload.get("report"), dict) else payload
+    if not isinstance(report_payload, dict):
+        raise HTTPException(status_code=400, detail="报告数据格式错误")
+    return attachment, report_payload
+
+
+@router.post("/bid-versions/report-data", response_model=AttachmentOut)
+def upload_bid_version_report_data_by_submission_file(
+    payload: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    api_username: str = Depends(require_report_data_upload_auth),
+) -> AttachmentOut:
+    attachment, report_payload = _resolve_attachment_for_report_data_upload(db, payload)
+    attachment = company_service.replace_bid_report_data(
+        db,
+        attachment,
+        report_data=report_payload,
+    )
+    company_name = attachment.company.name if attachment.company else ""
+    log_service.record_log(
+        db,
+        username=api_username,
+        action="upload",
+        module="bidding",
+        resource_type="bid_version_report_data",
+        resource_id=attachment.id,
+        summary=f"上传投标文件结构化报告 {company_name} v{attachment.version_number or '-'}",
+        detail={"submission_file_id": attachment.third_party_submission_file_id},
+        ip_address=get_client_ip(request),
+    )
+    return attachment_to_out(attachment)
+
+
+@router.post("/bid-versions/{attachment_id}/report-data", response_model=AttachmentOut)
+def upload_bid_version_report_data(
+    attachment_id: int,
+    payload: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    api_username: str = Depends(require_report_data_upload_auth),
+) -> AttachmentOut:
+    attachment, report_payload = _resolve_attachment_for_report_data_upload(
+        db,
+        payload,
+        attachment_id=attachment_id,
+    )
+    attachment = company_service.replace_bid_report_data(
+        db,
+        attachment,
+        report_data=report_payload,
+    )
+    company_name = attachment.company.name if attachment.company else ""
+    log_service.record_log(
+        db,
+        username=api_username,
+        action="upload",
+        module="bidding",
+        resource_type="bid_version_report_data",
+        resource_id=attachment.id,
+        summary=f"上传投标文件结构化报告 {company_name} v{attachment.version_number or '-'}",
+        detail={"submission_file_id": attachment.third_party_submission_file_id},
+        ip_address=get_client_ip(request),
+    )
+    return attachment_to_out(attachment)
+
+
+@router.get("/bid-versions/{attachment_id}/report-data", response_model=TechnicalReviewReportOut, dependencies=[Depends(require_permission("bidding", "report_view"))])
+def get_bid_version_report_data(
+    attachment_id: int,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_permission("bidding", "report_view")),
+) -> TechnicalReviewReportOut:
+    attachment = company_service.get_bid_attachment(db, attachment_id, current_user.owner_filter)
+    if not attachment:
+        raise HTTPException(status_code=404, detail="投标文件版本不存在")
+    report_data = company_service.get_bid_report_data(attachment)
+    if report_data is None or attachment.report_uploaded_at is None:
+        raise HTTPException(status_code=404, detail="报告数据不存在")
+
+    return TechnicalReviewReportOut(
+        attachment_id=attachment.id,
+        report_uploaded_at=attachment.report_uploaded_at,
+        report_data=report_data,
+    )
+
+
+@router.get("/bid-versions/{attachment_id}/report/download", dependencies=[Depends(require_permission("bidding", "report_download"))])
 def download_bid_version_report(
     attachment_id: int,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("bidding", "report_download")),
 ) -> FileResponse:
     attachment = company_service.get_bid_attachment(db, attachment_id, current_user.owner_filter)
     if not attachment:
@@ -274,12 +432,12 @@ def download_bid_version_report(
     )
 
 
-@router.delete("/bid-versions/{attachment_id}", status_code=204)
+@router.delete("/bid-versions/{attachment_id}", status_code=204, dependencies=[Depends(require_permission("bidding", "delete"))])
 def delete_bid_version(
     attachment_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("bidding", "delete")),
 ) -> None:
     attachment = company_service.get_bid_attachment(db, attachment_id, current_user.owner_filter)
     if not attachment:
@@ -298,11 +456,11 @@ def delete_bid_version(
     )
 
 
-@router.get("/bid-versions/{attachment_id}/preview")
+@router.get("/bid-versions/{attachment_id}/preview", dependencies=[Depends(require_permission("bidding", "preview"))])
 def preview_bid_version(
     attachment_id: int,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("bidding", "preview")),
 ) -> FileResponse:
     attachment = company_service.get_bid_attachment(db, attachment_id, current_user.owner_filter)
     if not attachment:
@@ -325,11 +483,11 @@ def preview_bid_version(
     )
 
 
-@router.get("/bid-versions/{attachment_id}/download")
+@router.get("/bid-versions/{attachment_id}/download", dependencies=[Depends(require_permission("bidding", "download"))])
 def download_bid_version(
     attachment_id: int,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("bidding", "download")),
 ) -> FileResponse:
     attachment = company_service.get_bid_attachment(db, attachment_id, current_user.owner_filter)
     if not attachment:

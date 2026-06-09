@@ -150,6 +150,30 @@ def list_project_tree(
     return groups, total
 
 
+def get_or_create_project_for_group(
+    db: Session,
+    group: BiddingProjectGroup,
+    name: str | None,
+    owner: str | None = None,
+) -> BiddingProject:
+    """向已有项目组登记参加单位时，未指定子项目名称则使用项目组名称。"""
+    resolved_name = (name or group.name).strip()
+    if not resolved_name:
+        raise ValueError("项目名称不能为空")
+
+    existing = find_project_by_group_and_name(db, group.id, resolved_name, owner)
+    if existing:
+        return existing
+
+    return create_project(
+        db,
+        group_id=group.id,
+        name=resolved_name,
+        participating_units="",
+        bid_opening_at=group.bid_opening_at,
+    )
+
+
 def find_project_by_group_and_name(
     db: Session,
     group_id: int,

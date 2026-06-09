@@ -28,13 +28,12 @@ interface ProjectFormModalProps {
 
 interface FormFields {
   group_mode: "existing" | "new";
-  group_id?: number;
-  group_name?: string;
-  group_bid_opening_at?: Dayjs;
+  db_id?: number;
+  project_name?: string;
+  bid_opening_time?: Dayjs;
   name?: string;
   participating_units?: string;
-  tender_doc?: UploadFile[];
-  bid_doc?: UploadFile[];
+  bid_file?: UploadFile[];
 }
 
 function isLikelyReportFile(file?: File) {
@@ -66,42 +65,43 @@ export default function ProjectFormModal({
   const useSelectOrInput = !isEdit && !isRevision;
 
   const groupMode = Form.useWatch("group_mode", form);
-  const watchedGroupId = Form.useWatch("group_id", form);
-  const effectiveGroupId = presetGroupId ?? presetRevision?.groupId ?? watchedGroupId;
+  const watchedDbId = Form.useWatch("db_id", form);
+  const effectiveDbId = presetGroupId ?? presetRevision?.dbId ?? watchedDbId;
   const isCreatingNewGroup = isGroupOnly && groupMode === "new";
   const showProjectFields =
     isEdit || Boolean(presetGroupId) || isRevision || (isGroupOnly && groupMode === "existing");
   const usingExistingGroup = Boolean(presetGroupId || presetRevision || groupMode === "existing");
   const requireBidOnCreate = showProjectFields && !isEdit;
+  const showSubProjectName = isEdit;
 
   useEffect(() => {
     if (!open || isEdit || isRevision) return;
     setGroupsLoading(true);
     fetchGroups()
       .then(setGroups)
-      .catch(() => message.error("加载项目组列表失败"))
+      .catch(() => message.error("加载项目列表失败"))
       .finally(() => setGroupsLoading(false));
   }, [open, isEdit, isRevision]);
 
   useEffect(() => {
     if (!open || !useSelectOrInput) return;
 
-    if (!effectiveGroupId) {
+    if (!effectiveDbId) {
       setFormOptions({ project_names: [], company_names: [] });
       return;
     }
 
     setOptionsLoading(true);
-    fetchProjectFormOptions(effectiveGroupId)
+    fetchProjectFormOptions(effectiveDbId)
       .then(setFormOptions)
-      .catch(() => message.error("加载项目组选项失败"))
+      .catch(() => message.error("加载项目选项失败"))
       .finally(() => setOptionsLoading(false));
-  }, [open, useSelectOrInput, effectiveGroupId]);
+  }, [open, useSelectOrInput, effectiveDbId]);
 
   useEffect(() => {
     if (!open || !useSelectOrInput || isRevision || presetGroupId) return;
     form.setFieldsValue({ name: undefined, participating_units: undefined });
-  }, [open, useSelectOrInput, isRevision, presetGroupId, effectiveGroupId, form]);
+  }, [open, useSelectOrInput, isRevision, presetGroupId, effectiveDbId, form]);
 
   const fillForm = () => {
     if (project) {
@@ -115,71 +115,72 @@ export default function ProjectFormModal({
       form.resetFields();
       form.setFieldsValue({
         group_mode: "existing",
-        group_id: presetRevision.groupId,
+        db_id: presetRevision.dbId,
         name: presetRevision.projectName,
         participating_units: presetRevision.companyName,
-        tender_doc: [],
-        bid_doc: [],
+        bid_file: [],
       });
       return;
     }
     form.resetFields();
     form.setFieldsValue({
       group_mode: presetGroupId ? "existing" : "new",
-      group_id: presetGroupId ?? undefined,
-      group_bid_opening_at: undefined,
-      tender_doc: [],
-      bid_doc: [],
+      db_id: presetGroupId ?? undefined,
+      bid_opening_time: undefined,
+      bid_file: [],
     });
   };
 
   const handleOk = async () => {
     const values = await form.validateFields();
 
-    const resolvedGroupId = values.group_id ?? presetGroupId ?? presetRevision?.groupId ?? undefined;
+    const resolvedDbId = values.db_id ?? presetGroupId ?? presetRevision?.dbId ?? undefined;
     const resolvedGroupMode: FormFields["group_mode"] = isEdit
       ? "existing"
       : presetGroupId || presetRevision
         ? "existing"
         : (values.group_mode ?? "new");
 
-    if (!isEdit && resolvedGroupMode === "existing" && !resolvedGroupId) {
-      message.warning("请选择项目组");
+    if (!isEdit && resolvedGroupMode === "existing" && !resolvedDbId) {
+      message.warning("请选择项目");
       return;
     }
 
-    const tenderFile = values.tender_doc?.[0]?.originFileObj as File | undefined;
-    const bidFile = values.bid_doc?.[0]?.originFileObj as File | undefined;
+    const bidFile = values.bid_file?.[0]?.originFileObj as File | undefined;
 
     if (isCreatingNewGroup) {
-      if (!values.group_name?.trim()) {
-        message.warning("请输入分组名称");
+      if (!values.project_name?.trim()) {
+        message.warning("请输入项目名称");
         return;
       }
-      if (!values.group_bid_opening_at) {
+      if (!values.bid_opening_time) {
         message.warning("请选择开标时间");
         return;
       }
-      if (!tenderFile) {
+      if (!bidFile) {
         message.warning("请上传招标文件");
         return;
       }
       await onSubmit({
         group_mode: "new",
-        group_name: values.group_name.trim(),
-        group_bid_opening_at: values.group_bid_opening_at.toISOString(),
-        tender_doc: tenderFile,
+        project_name: values.project_name.trim(),
+        bid_opening_time: values.bid_opening_time.toISOString(),
+        bid_file: bidFile,
       });
       return;
     }
 
-    if (!isEdit && resolvedGroupMode === "new" && !values.group_name?.trim()) {
-      message.warning("请输入分组名称");
+    if (!isEdit && resolvedGroupMode === "new" && !values.project_name?.trim()) {
+      message.warning("请输入项目名称");
       return;
     }
 
-    if (!values.name?.trim() || !values.participating_units?.trim()) {
-      message.warning("请填写完整项目信息");
+    if (!values.participating_units?.trim()) {
+      message.warning("请填写参加单位");
+      return;
+    }
+    if (isEdit && !values.name?.trim()) {
+      message.warning("请填写项目名称");
       return;
     }
 
@@ -198,12 +199,11 @@ export default function ProjectFormModal({
 
     await onSubmit({
       group_mode: resolvedGroupMode,
-      group_id: resolvedGroupId,
-      group_name: values.group_name,
-      name: values.name.trim(),
+      db_id: resolvedDbId,
+      project_name: values.project_name,
+      name: values.name?.trim(),
       participating_units: values.participating_units.trim(),
-      tender_doc: tenderFile,
-      bid_doc: bidFile,
+      bid_file: bidFile,
     });
   };
 
@@ -212,10 +212,10 @@ export default function ProjectFormModal({
     : isRevision
       ? "上传新版投标文件"
       : presetGroupId
-        ? "向项目组添加项目"
+        ? "添加参加单位"
         : groupMode === "new"
-          ? "新建项目组"
-          : "新建项目";
+          ? "新建项目"
+          : "登记参加单位";
 
   const lockProjectMeta = isRevision;
 
@@ -238,16 +238,16 @@ export default function ProjectFormModal({
     >
       <p className="text-gray-500 mb-4 text-sm">
         {isEdit
-          ? "可修改项目名称、参加单位。开标时间请在项目组编辑中修改。"
+          ? "可修改项目名称、参加单位。开标时间请在项目编辑中修改。"
           : isRevision
             ? "同一项目、同一参加单位再次上传时，将自动归入该单位并记录为新版本。"
             : isCreatingNewGroup
-              ? "填写分组名称、开标时间并上传招标文件；项目可在组内通过「添加项目」登记。"
+              ? "填写项目名称、开标时间并上传招标文件；参加单位可在项目下继续登记。"
               : showProjectFields
                 ? usingExistingGroup
-                  ? "选择已有项目组时无需重复上传招标文件；同名参加单位将自动追加投标文件版本。"
-                  : "请填写项目信息并上传投标文件。"
-                : "请填写项目组与项目信息。"}
+                  ? "无需重复上传招标文件；同名参加单位将自动追加投标文件版本。"
+                  : "请填写参加单位信息并上传投标文件。"
+                : "请填写项目与参加单位信息。"}
       </p>
       <Form
         form={form}
@@ -257,7 +257,7 @@ export default function ProjectFormModal({
           project
             ? `project-${project.id}`
             : presetRevision
-              ? `revision-${presetRevision.groupId}-${presetRevision.projectName}-${presetRevision.companyName}`
+              ? `revision-${presetRevision.dbId}-${presetRevision.projectName}-${presetRevision.companyName}`
               : presetGroupId
                 ? `preset-${presetGroupId}`
                 : "project-new"
@@ -265,24 +265,24 @@ export default function ProjectFormModal({
       >
         {isGroupOnly && (
           <>
-            <Form.Item name="group_mode" label="项目组" initialValue="new">
+            <Form.Item name="group_mode" label="项目" initialValue="new">
               <Radio.Group>
-                <Radio value="new">新建项目组</Radio>
-                <Radio value="existing">选择已有项目组</Radio>
+                <Radio value="new">新建项目</Radio>
+                <Radio value="existing">选择已有项目</Radio>
               </Radio.Group>
             </Form.Item>
 
             {groupMode === "new" ? (
               <>
                 <Form.Item
-                  name="group_name"
-                  label="分组名称"
-                  rules={[{ required: true, message: "请输入分组名称" }]}
+                  name="project_name"
+                  label="项目名称"
+                  rules={[{ required: true, message: "请输入项目名称" }]}
                 >
-                  <Input placeholder="例如：5月27号开标" maxLength={200} showCount />
+                  <Input placeholder="例如：岗集镇2026年美丽宜居村庄建设" maxLength={200} showCount />
                 </Form.Item>
                 <Form.Item
-                  name="tender_doc"
+                  name="bid_file"
                   label={ATTACHMENT_TYPE_MAP.tender_doc}
                   valuePropName="fileList"
                   getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
@@ -297,7 +297,7 @@ export default function ProjectFormModal({
                   </Upload.Dragger>
                 </Form.Item>
                 <Form.Item
-                  name="group_bid_opening_at"
+                  name="bid_opening_time"
                   label="开标时间"
                   rules={[{ required: true, message: "请选择开标时间" }]}
                 >
@@ -312,18 +312,18 @@ export default function ProjectFormModal({
               </>
             ) : (
               <Form.Item
-                name="group_id"
-                label="选择项目组"
-                rules={[{ required: true, message: "请选择项目组" }]}
+                name="db_id"
+                label="选择项目"
+                rules={[{ required: true, message: "请选择项目" }]}
               >
                 <Select
-                  placeholder="选择项目组"
+                  placeholder="选择项目"
                   loading={groupsLoading}
                   showSearch
                   optionFilterProp="label"
                   options={groups.map((g) => ({
-                    value: g.id,
-                    label: `${g.name}（${formatChinaTime(g.bid_opening_at, "YYYY-MM-DD HH:mm")}，${g.project_count} 个项目）`,
+                    value: g.db_id,
+                    label: `${g.project_name}（${formatChinaTime(g.bid_opening_time, "YYYY-MM-DD HH:mm")}，${g.project_count} 个项目）`,
                   }))}
                 />
               </Form.Item>
@@ -336,49 +336,39 @@ export default function ProjectFormModal({
             <Form.Item name="group_mode" hidden initialValue="existing">
               <Input />
             </Form.Item>
-            <Form.Item name="group_id" hidden initialValue={presetGroupId ?? presetRevision?.groupId}>
+            <Form.Item name="db_id" hidden initialValue={presetGroupId ?? presetRevision?.dbId}>
               <Input />
             </Form.Item>
             <div className="mb-4 flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-700">
               <FolderOutlined />
-              <span>{isRevision ? "向已有项目追加投标文件版本" : "将添加到已有项目组"}</span>
+              <span>{isRevision ? "向已有参加单位追加投标文件版本" : "将添加到已有项目"}</span>
             </div>
           </>
         )}
 
         {isEdit && project && (
           <div className="mb-4 text-sm text-gray-500">
-            所属项目组：<Typography.Text strong>{project.group_name}</Typography.Text>
+            所属项目：<Typography.Text strong>{project.project_name}</Typography.Text>
           </div>
         )}
 
         {showProjectFields && (
           <>
             {isGroupOnly && groupMode === "existing" && <Divider />}
-            <Form.Item
-              name="name"
-              label="项目名称"
-              rules={[
-                { required: true, message: useSelectOrInput ? "请选择或输入项目名称" : "请输入项目名称" },
-              ]}
-            >
-              {useSelectOrInput ? (
-                <SelectOrInput
-                  options={formOptions.project_names}
-                  loading={optionsLoading}
-                  selectPlaceholder={effectiveGroupId ? "选择本组已有项目名称" : "请先选择项目组"}
-                  inputPlaceholder="例如：XX 市政道路改造工程"
-                  disabled={lockProjectMeta || !effectiveGroupId}
-                />
-              ) : (
-                <Input
-                  placeholder="例如：XX 市政道路改造工程"
-                  maxLength={200}
-                  showCount
-                  disabled={lockProjectMeta}
-                />
-              )}
-            </Form.Item>
+            {showSubProjectName && (
+              <Form.Item
+                name="name"
+                label="项目名称"
+                rules={[{ required: true, message: "请输入项目名称" }]}
+              >
+                <Input placeholder="例如：XX 市政道路改造工程" maxLength={200} showCount />
+              </Form.Item>
+            )}
+            {isRevision && (
+              <Form.Item name="name" hidden>
+                <Input />
+              </Form.Item>
+            )}
             <Form.Item
               name="participating_units"
               label="参加单位"
@@ -390,9 +380,9 @@ export default function ProjectFormModal({
                 <SelectOrInput
                   options={formOptions.company_names}
                   loading={optionsLoading}
-                  selectPlaceholder={effectiveGroupId ? "选择本组已有参加单位" : "请先选择项目组"}
+                  selectPlaceholder={effectiveDbId ? "选择本项目已有参加单位" : "请先选择项目"}
                   inputPlaceholder="例如：XX建设有限公司"
-                  disabled={lockProjectMeta || !effectiveGroupId}
+                  disabled={lockProjectMeta || !effectiveDbId}
                 />
               ) : (
                 <Input
@@ -405,7 +395,7 @@ export default function ProjectFormModal({
             </Form.Item>
             {!isEdit && (
               <Form.Item
-                name="bid_doc"
+                name="bid_file"
                 label={isRevision ? "新版投标文件" : ATTACHMENT_TYPE_MAP.bid_doc}
                 valuePropName="fileList"
                 getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}

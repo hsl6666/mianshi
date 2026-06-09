@@ -8,6 +8,7 @@ import {
   ATTACHMENT_TYPE_MAP,
   PROJECT_STATUS_MAP,
   REPORT_STATUS_MAP,
+  resolveReportStatus,
   THIRD_PARTY_SYNC_STATUS_MAP,
 } from "../constants";
 import {
@@ -21,7 +22,7 @@ import AnalysisStatusSwitch from "./AnalysisStatusSwitch";
 import BidFilePreviewLink from "./BidFilePreviewLink";
 import EllipsisTooltip from "./EllipsisTooltip";
 import type { BiddingProjectDetail, ProjectAttachment, ThirdPartySyncStatus } from "../types";
-import { useAuthStore } from "@/store/authStore";
+import { usePermission } from "@/hooks/usePermission";
 
 interface ProjectDetailDrawerProps {
   open: boolean;
@@ -31,7 +32,13 @@ interface ProjectDetailDrawerProps {
 
 export default function ProjectDetailDrawer({ open, project, onClose }: ProjectDetailDrawerProps) {
   const { isMobile, drawerProps } = useResponsiveOverlay();
-  const isSuperAdmin = useAuthStore((state) => state.isSuperAdmin);
+  const { can } = usePermission();
+  const canPreview = can("bidding", "preview");
+  const canDownload = can("bidding", "download");
+  const canAnalysis = can("bidding", "analysis");
+  const canReportUpload = can("bidding", "report_upload");
+  const canReportDownload = can("bidding", "report_download");
+  const canSync = can("bidding", "sync");
   const [analysisStatusMap, setAnalysisStatusMap] = useState<Record<number, boolean>>({});
   const [syncStatusMap, setSyncStatusMap] = useState<Record<number, ThirdPartySyncStatus>>({});
   const [reportMap, setReportMap] = useState<
@@ -145,8 +152,8 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
       {...drawerProps}
     >
       <Descriptions column={1} bordered size="small">
-        <Descriptions.Item label="所属项目组">
-          <EllipsisTooltip title={project.group_name}>{project.group_name}</EllipsisTooltip>
+        <Descriptions.Item label="所属项目">
+          <EllipsisTooltip title={project.project_name}>{project.project_name}</EllipsisTooltip>
         </Descriptions.Item>
         <Descriptions.Item label="项目名称">
           <EllipsisTooltip title={project.name}>{project.name}</EllipsisTooltip>
@@ -168,13 +175,13 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
           </EllipsisTooltip>
         </Descriptions.Item>
         <Descriptions.Item label="开标时间">
-          {formatChinaTime(project.bid_opening_at, "YYYY-MM-DD HH:mm")}
+          {formatChinaTime(project.bid_opening_time, "YYYY-MM-DD HH:mm")}
         </Descriptions.Item>
         <Descriptions.Item label="招标文件">
           <Space direction="vertical" size={4}>
             {project.attachments.length === 0 ? (
               <span className="text-gray-400">暂无招标文件</span>
-            ) : (
+            ) : canDownload ? (
               project.attachments.map((file) => (
                 <EllipsisTooltip key={file.id} title={file.original_name}>
                   <a
@@ -186,6 +193,12 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
                   >
                     {file.original_name}
                   </a>
+                </EllipsisTooltip>
+              ))
+            ) : (
+              project.attachments.map((file) => (
+                <EllipsisTooltip key={file.id} title={file.original_name}>
+                  <span>{file.original_name}</span>
                 </EllipsisTooltip>
               ))
             )}
@@ -237,23 +250,32 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
                       report_uploaded_at: file.report_uploaded_at ?? null,
                     };
                     const hasReport = Boolean(report.report_original_name || report.report_uploaded_at);
-                    const reportMeta = REPORT_STATUS_MAP[hasReport ? "uploaded" : "pending"];
+                    const reportMeta = REPORT_STATUS_MAP[
+                      resolveReportStatus({
+                        report_status: file.report_status ?? "pending",
+                        report_has_data: hasReport,
+                      })
+                    ];
                     return (
                       <div key={file.id} className="space-y-1">
                         <div className="flex min-w-0 items-center gap-1">
                           <span className="shrink-0 text-gray-500">{prefix}</span>
-                          <BidFilePreviewLink attachmentId={file.id} filename={file.original_name} />
+                          {canPreview ? (
+                            <BidFilePreviewLink attachmentId={file.id} filename={file.original_name} />
+                          ) : (
+                            <span>{file.original_name}</span>
+                          )}
                           <span className="shrink-0 text-gray-500">{suffix}</span>
                         </div>
                         <div className="flex items-center gap-2 pl-5 text-xs text-gray-500">
                           <span>分析状态</span>
                           <AnalysisStatusSwitch
                             value={analysisStatusMap[file.id] ?? file.analysis_status ?? false}
-                            disabled={!isSuperAdmin}
+                            disabled={!canAnalysis}
                             onChange={(checked) => handleAnalysisStatusChange(file.id, checked)}
                           />
                         </div>
-                        {isSuperAdmin && (
+                        {canSync && (
                           <div className="flex flex-wrap items-center gap-2 pl-5 text-xs text-gray-500">
                             <span>三方同步状态</span>
                             <Tag color={syncMeta.color} className="m-0">
@@ -275,7 +297,7 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
                           <Tag color={reportMeta.color} className="m-0">
                             {reportMeta.label}
                           </Tag>
-                          {isSuperAdmin && (
+                          {canReportUpload && (
                             <Upload
                               accept={ACCEPTED_FILE_TYPES}
                               showUploadList={false}
@@ -289,7 +311,7 @@ export default function ProjectDetailDrawer({ open, project, onClose }: ProjectD
                               </Button>
                             </Upload>
                           )}
-                          {hasReport && (
+                          {hasReport && canReportDownload && (
                             <Button
                               type="link"
                               size="small"

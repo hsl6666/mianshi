@@ -18,8 +18,8 @@ interface GroupFormModalProps {
 }
 
 interface FormFields {
-  name: string;
-  bid_opening_at?: Dayjs;
+  project_name: string;
+  bid_opening_time?: Dayjs;
 }
 
 export default function GroupFormModal({
@@ -47,18 +47,18 @@ export default function GroupFormModal({
       .then((detail) => {
         setGroupDetail(detail);
         form.setFieldsValue({
-          name: detail.name,
-          bid_opening_at: parseChinaTime(detail.bid_opening_at) ?? undefined,
+          project_name: detail.project_name,
+          bid_opening_time: parseChinaTime(detail.bid_opening_time) ?? undefined,
         });
       })
-      .catch(() => message.error("加载项目组详情失败"))
+      .catch(() => message.error("加载项目详情失败"))
       .finally(() => setDetailLoading(false));
   }, [open, groupId, form]);
 
   const fillForm = () => {
     form.setFieldsValue({
-      name: groupName ?? groupDetail?.name ?? "",
-      bid_opening_at: groupDetail ? parseChinaTime(groupDetail.bid_opening_at) ?? undefined : undefined,
+      project_name: groupName ?? groupDetail?.project_name ?? "",
+      bid_opening_time: groupDetail ? parseChinaTime(groupDetail.bid_opening_time) ?? undefined : undefined,
     });
   };
 
@@ -66,8 +66,8 @@ export default function GroupFormModal({
     const values = await form.validateFields();
     if (!groupId) return;
     await onSubmit({
-      name: values.name,
-      bid_opening_at: values.bid_opening_at!.toISOString(),
+      project_name: values.project_name,
+      bid_opening_time: values.bid_opening_time!.toISOString(),
     });
   };
 
@@ -86,7 +86,7 @@ export default function GroupFormModal({
 
   return (
     <Modal
-      title="编辑项目组"
+      title="编辑项目"
       open={open}
       onCancel={onCancel}
       onOk={handleOk}
@@ -106,8 +106,8 @@ export default function GroupFormModal({
           preserve={false}
           key={groupId ? `group-${groupId}` : "group-new"}
         >
-          <Form.Item name="name" label="分组名称" rules={[{ required: true, message: "请输入分组名称" }]}>
-            <Input placeholder="例如：5月27号开标" maxLength={200} showCount />
+          <Form.Item name="project_name" label="项目名称" rules={[{ required: true, message: "请输入项目名称" }]}>
+            <Input placeholder="例如：岗集镇2026年美丽宜居村庄建设" maxLength={200} showCount />
           </Form.Item>
           <Form.Item label={ATTACHMENT_TYPE_MAP.tender_doc}>
             {tenderDoc ? (
@@ -123,7 +123,7 @@ export default function GroupFormModal({
             )}
           </Form.Item>
           <Form.Item
-            name="bid_opening_at"
+            name="bid_opening_time"
             label="开标时间"
             rules={[{ required: true, message: "请选择开标时间" }]}
           >

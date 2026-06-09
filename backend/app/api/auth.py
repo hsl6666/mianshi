@@ -6,6 +6,7 @@ from app.core.security import create_access_token, create_refresh_token
 from app.db import get_db
 from app.schemas import CurrentUserOut, LoginRequest, TokenResponse
 from app.services import operation_logs as log_service
+from app.services import permissions as permission_service
 from app.services import users as user_service
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -37,9 +38,11 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
 def get_me(current_user=Depends(get_current_user), db: Session = Depends(get_db)) -> CurrentUserOut:
     user = user_service.get_user_by_username(db, current_user.username)
     display_name = user.display_name if user else None
+    permissions = permission_service.permissions_from_user(user)
     return CurrentUserOut(
         username=current_user.username,
         role=current_user.role,
         display_name=display_name,
         is_super_admin=current_user.is_super_admin,
+        permissions=permissions,
     )

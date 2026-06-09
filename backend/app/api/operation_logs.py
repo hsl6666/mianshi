@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_super_admin
+from app.api.deps import require_permission
 from app.db import get_db
 from app.schemas import OperationLogOut, PaginatedOperationLogs
 from app.services import operation_logs as log_service
@@ -11,7 +11,7 @@ from app.services import operation_logs as log_service
 router = APIRouter(
     prefix="/api/operation-logs",
     tags=["operation-logs"],
-    dependencies=[Depends(require_super_admin)],
+    dependencies=[Depends(require_permission("operation_logs", "view"))],
 )
 
 

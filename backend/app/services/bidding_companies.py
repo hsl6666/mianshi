@@ -15,8 +15,10 @@ from app.models import (
     CompanyFeedback,
     ProjectAttachment,
     ProjectStatus,
+    ReportStatus,
     ThirdPartySyncStatus,
 )
+from app.services.third_party_bidding_client import analyze_submission_file
 from app.services.bidding_projects import company_status, sync_project_status
 
 
@@ -79,6 +81,7 @@ def add_bid_version(
     stored_name: str,
     size_bytes: int,
     content_type: str | None,
+    third_party_file_name: str | None = None,
 ) -> ProjectAttachment:
     version_number = next_bid_version_number(company)
     attachment = ProjectAttachment(
@@ -86,6 +89,7 @@ def add_bid_version(
         company_id=company.id,
         attachment_type=AttachmentType.bid_doc,
         original_name=original_name,
+        third_party_file_name=third_party_file_name or original_name,
         stored_name=stored_name,
         size_bytes=size_bytes,
         content_type=content_type,
@@ -97,6 +101,44 @@ def add_bid_version(
     db.commit()
     db.refresh(attachment)
     return attachment
+
+
+def extract_submission_file_id(payload: dict) -> str | None:
+    submission_file_id = payload.get("submission_file_id")
+    if isinstance(submission_file_id, str) and submission_file_id.strip():
+        return submission_file_id.strip()
+
+    submission_file = payload.get("submission_file")
+    if isinstance(submission_file, dict):
+        file_id = submission_file.get("id")
+        if isinstance(file_id, str) and file_id.strip():
+            return file_id.strip()
+    return None
+
+
+def get_bid_attachment_by_submission_file_id(
+    db: Session,
+    submission_file_id: str,
+    owner: str | None = None,
+) -> ProjectAttachment | None:
+    query = (
+        select(ProjectAttachment)
+        .join(BiddingCompany, ProjectAttachment.company_id == BiddingCompany.id)
+        .join(BiddingProject, BiddingCompany.project_id == BiddingProject.id)
+        .join(BiddingProjectGroup, BiddingProject.group_id == BiddingProjectGroup.id)
+        .where(
+            ProjectAttachment.third_party_submission_file_id == submission_file_id,
+            ProjectAttachment.attachment_type == AttachmentType.bid_doc,
+        )
+        .options(
+            selectinload(ProjectAttachment.company)
+            .selectinload(BiddingCompany.project)
+            .selectinload(BiddingProject.group),
+        )
+    )
+    if owner is not None:
+        query = query.where(BiddingProjectGroup.owner == owner)
+    return db.scalar(query)
 
 
 def get_bid_attachment(
@@ -114,7 +156,9 @@ def get_bid_attachment(
             ProjectAttachment.attachment_type == AttachmentType.bid_doc,
         )
         .options(
-            selectinload(ProjectAttachment.company).selectinload(BiddingCompany.project),
+            selectinload(ProjectAttachment.company)
+            .selectinload(BiddingCompany.project)
+            .selectinload(BiddingProject.group),
         )
     )
     if owner is not None:
@@ -137,6 +181,106 @@ def delete_bid_version(db: Session, attachment: ProjectAttachment) -> None:
     if company:
         company.updated_at = china_now()
     db.commit()
+
+
+def resolve_third_party_project_id(group: BiddingProjectGroup) -> str:
+    if group.third_party_db_id:
+        return group.third_party_db_id
+    if group.third_party_project_id:
+        return group.third_party_project_id
+    if group.project_code:
+        return group.project_code
+    raise ValueError("项目未配置第三方 project_id，请先在项目组中填写第三方项目编号")
+
+
+def update_bid_report_status(
+    db: Session,
+    attachment: ProjectAttachment,
+    *,
+    report_status: ReportStatus,
+) -> ProjectAttachment:
+    attachment.report_status = report_status
+    if attachment.company:
+        attachment.company.updated_at = china_now()
+    db.commit()
+    db.refresh(attachment)
+    return attachment
+
+
+async def analyze_bid_version(
+    db: Session,
+    attachment: ProjectAttachment,
+    *,
+    access_token: str,
+    base_url: str,
+) -> ProjectAttachment:
+    if attachment.report_status == ReportStatus.analyzing:
+        raise ValueError("该版本正在分析中，请稍后再试")
+
+    company = attachment.company
+    if not company:
+        raise ValueError("投标文件缺少投标单位信息")
+
+    project = company.project
+    if not project or not project.group:
+        raise ValueError("投标文件缺少项目信息")
+
+    group = project.group
+    project_id = resolve_third_party_project_id(group)
+
+    settings = get_settings()
+    file_path = settings.uploads_dir / attachment.stored_name
+    if not file_path.exists():
+        raise ValueError("投标文件不存在")
+
+    attachment.report_status = ReportStatus.analyzing
+    if attachment.company:
+        attachment.company.updated_at = china_now()
+    db.commit()
+
+    try:
+        result = await analyze_submission_file(
+            base_url=base_url,
+            access_token=access_token,
+            project_id=project_id,
+            project_code=group.project_code,
+            company_name=company.name,
+            response_file_name=attachment.original_name,
+            response_file_bytes=file_path.read_bytes(),
+            response_file_content_type=attachment.content_type,
+            third_party_file_name=attachment.third_party_file_name or attachment.original_name,
+            third_party_company_name=company.name,
+        )
+    except Exception:
+        attachment.report_status = ReportStatus.failed
+        if attachment.company:
+            attachment.company.updated_at = china_now()
+        db.commit()
+        db.refresh(attachment)
+        raise
+
+    now = china_now()
+    if result.submission_file and result.submission_file.id:
+        attachment.third_party_submission_file_id = result.submission_file.id
+
+    report_payload = result.report or result.report_data
+    if isinstance(report_payload, dict):
+        attachment.report_data = json.dumps(report_payload, ensure_ascii=False, sort_keys=True)
+        attachment.report_uploaded_at = now
+        attachment.report_status = ReportStatus.completed
+        attachment.analysis_status = True
+    elif (result.status or "").lower() == "accepted":
+        # 第三方异步受理，保持 analyzing，等待后续查报告
+        pass
+    else:
+        attachment.report_status = ReportStatus.completed
+        attachment.analysis_status = True
+
+    if attachment.company:
+        attachment.company.updated_at = now
+    db.commit()
+    db.refresh(attachment)
+    return attachment
 
 
 def update_bid_analysis_status(
@@ -235,11 +379,40 @@ def replace_bid_report(
     attachment.report_content_type = content_type
     attachment.report_uploaded_at = now
     attachment.analysis_status = True
+    attachment.report_status = ReportStatus.completed
     if attachment.company:
         attachment.company.updated_at = now
     db.commit()
     db.refresh(attachment)
     return attachment
+
+
+def replace_bid_report_data(
+    db: Session,
+    attachment: ProjectAttachment,
+    *,
+    report_data: dict,
+) -> ProjectAttachment:
+    now = china_now()
+    attachment.report_data = json.dumps(report_data, ensure_ascii=False, sort_keys=True)
+    attachment.report_uploaded_at = now
+    attachment.analysis_status = True
+    attachment.report_status = ReportStatus.completed
+    if attachment.company:
+        attachment.company.updated_at = now
+    db.commit()
+    db.refresh(attachment)
+    return attachment
+
+
+def get_bid_report_data(attachment: ProjectAttachment) -> dict | None:
+    if not attachment.report_data:
+        return None
+    try:
+        value = json.loads(attachment.report_data)
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, dict) else None
 
 
 def update_company(db: Session, company: BiddingCompany, *, name: str | None = None) -> BiddingCompany:

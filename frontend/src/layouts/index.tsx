@@ -31,12 +31,12 @@ export default function MainLayout() {
   return (
     <>
       <AppHelmet />
-      <Layout className="min-h-screen">
+      <Layout className="h-screen overflow-hidden">
         <Layout.Sider
           width={200}
           breakpoint="lg"
           collapsedWidth={0}
-          className="hidden md:block bg-white dark:bg-[#001529]"
+          className="hidden md:block h-screen overflow-hidden bg-white dark:bg-[#001529]"
         >
           <div className="h-14 md:h-16 flex items-center px-4 gap-2 border-b border-gray-100 dark:border-gray-800">
             <FileTextOutlined className="text-blue-500" />
@@ -44,22 +44,24 @@ export default function MainLayout() {
               招投标系统
             </Typography.Text>
           </div>
-          <AppSidebar />
+          <div className="h-[calc(100vh-64px)] overflow-hidden">
+            <AppSidebar />
+          </div>
         </Layout.Sider>
-        <Layout>
+        <Layout className="h-screen min-w-0 overflow-hidden">
           <Layout.Header
             id="app-header-bar"
-            className="flex items-center sticky top-0 z-[999] px-3 md:px-4 bg-white dark:bg-[#001529] h-14 md:h-16"
+            className="flex shrink-0 items-center sticky top-0 z-[999] px-3 md:px-4 bg-white dark:bg-[#001529] h-14 md:h-16"
           >
             <Typography.Text strong className="text-base md:text-lg md:hidden">
               招投标项目管理
             </Typography.Text>
-            <div className="ml-auto flex items-center gap-2 shrink-0">
-              <ThemeSwitch />
+            <div className="ml-auto flex items-center gap-1 shrink-0">
+              <ThemeSwitch className="!text-slate-600 dark:!text-slate-200" />
               <UserAvatar />
             </div>
           </Layout.Header>
-          <div className="md:hidden border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-[#001529] overflow-x-auto">
+          <div className="md:hidden shrink-0 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-[#001529] overflow-x-auto">
             <AppSidebar />
           </div>
           <Content />

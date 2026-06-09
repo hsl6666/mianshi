@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button, Card, Collapse, Empty, Popconfirm, Space, Spin, Tag, Tooltip, Upload } from "antd";
-import { formatChinaTime } from "@/utils/date";
 import {
   BankOutlined,
   DeleteOutlined,
@@ -8,7 +7,7 @@ import {
   EditOutlined,
   EyeOutlined,
   FileSearchOutlined,
-  FolderOutlined,
+  CalendarOutlined,
   HistoryOutlined,
   PlusOutlined,
   SyncOutlined,
@@ -21,8 +20,10 @@ import {
   ACCEPTED_FILE_TYPES,
   PROJECT_STATUS_MAP,
   REPORT_STATUS_MAP,
+  resolveReportStatus,
   THIRD_PARTY_SYNC_STATUS_MAP,
 } from "../constants";
+import type { BiddingAccess } from "@/constants/permissions";
 import type {
   BidVersionListItem,
   BiddingCompanyListItem,
@@ -30,6 +31,7 @@ import type {
   BiddingProjectListItem,
   ThirdPartySyncStatus,
 } from "../types";
+import { buildDateTree } from "../utils/buildDateTree";
 
 interface ProjectMobileCardListProps {
   loading: boolean;
@@ -38,30 +40,35 @@ interface ProjectMobileCardListProps {
   onEdit: (id: number) => void;
   onFeedback: (company: BiddingCompanyListItem, project: BiddingProjectListItem) => void;
   onDelete: (id: number) => void;
+  canDeleteGroup: boolean;
+  onDeleteGroup: (group: BiddingProjectGroupTreeItem) => void;
   onEditGroup: (group: BiddingProjectGroupTreeItem) => void;
   onDownloadGroupTender: (group: BiddingProjectGroupTreeItem) => void;
   onAddProject: (groupId: number) => void;
   onUploadRevision: (
     groupId: number,
-    project: Pick<BiddingProjectListItem, "name" | "bid_opening_at">,
+    project: Pick<BiddingProjectListItem, "name" | "bid_opening_time">,
     company: Pick<BiddingCompanyListItem, "name">,
   ) => void;
   onDeleteCompany: (id: number) => void;
   onPreviewVersion: (record: BidVersionListItem) => void;
   onDownloadVersion: (record: BidVersionListItem) => void;
   onDownloadVersionReport: (record: BidVersionListItem) => void;
+  onOpenVersionReport: (record: BidVersionListItem) => void;
   onUploadVersionReport: (record: BidVersionListItem, file: File) => void;
   onAnalysisStatusChange: (record: BidVersionListItem, analysisStatus: boolean) => void;
   onThirdPartySyncStatusChange: (
     record: BidVersionListItem,
     thirdPartySyncStatus: ThirdPartySyncStatus,
   ) => void;
-  isSuperAdmin: boolean;
+  access: BiddingAccess;
   onDeleteVersion: (id: number) => void;
+  onAnalyzeVersion: (record: BidVersionListItem) => void;
+  analyzingVersionId: number | null;
 }
 
-function hasVersionReport(record: Pick<BidVersionListItem, "report_original_name" | "report_uploaded_at">) {
-  return Boolean(record.report_original_name || record.report_uploaded_at);
+function hasVersionReport(record: Pick<BidVersionListItem, "report_has_data">) {
+  return Boolean(record.report_has_data);
 }
 
 export default function ProjectMobileCardList({
@@ -71,6 +78,8 @@ export default function ProjectMobileCardList({
   onEdit,
   onFeedback,
   onDelete,
+  canDeleteGroup,
+  onDeleteGroup,
   onEditGroup,
   onDownloadGroupTender,
   onAddProject,
@@ -79,17 +88,21 @@ export default function ProjectMobileCardList({
   onPreviewVersion,
   onDownloadVersion,
   onDownloadVersionReport,
+  onOpenVersionReport,
   onUploadVersionReport,
   onAnalysisStatusChange,
   onThirdPartySyncStatusChange,
-  isSuperAdmin,
+  access,
   onDeleteVersion,
+  onAnalyzeVersion,
+  analyzingVersionId,
 }: ProjectMobileCardListProps) {
+  const dateTree = useMemo(() => buildDateTree(groups), [groups]);
   const [activeKeys, setActiveKeys] = useState<string[]>([]);
 
   useEffect(() => {
-    setActiveKeys(groups[0] ? [String(groups[0].id)] : []);
-  }, [groups]);
+    setActiveKeys(dateTree[0] ? [dateTree[0].dateKey] : []);
+  }, [dateTree]);
 
   if (loading && groups.length === 0) {
     return (
@@ -99,60 +112,63 @@ export default function ProjectMobileCardList({
     );
   }
 
-  if (!loading && groups.length === 0) {
-    return <Empty description="暂无项目组" className="py-8" />;
+  if (!loading && dateTree.length === 0) {
+    return <Empty description="暂无项目数据" className="py-8" />;
   }
 
   return (
     <Collapse
       activeKey={activeKeys}
       onChange={(keys) => setActiveKeys(keys as string[])}
-      items={groups.map((group) => ({
-        key: String(group.id),
+      items={dateTree.map((dateNode) => ({
+        key: dateNode.dateKey,
         label: (
           <div className="flex items-center gap-2 min-w-0">
-            <FolderOutlined className="text-blue-500 shrink-0" />
+            <CalendarOutlined className="text-blue-500 shrink-0" />
             <div className="min-w-0 flex-1">
-              <EllipsisTooltip title={group.name}>
-                <div className="font-medium">{group.name}</div>
-              </EllipsisTooltip>
-              <div className="text-xs text-gray-500">
-                {formatChinaTime(group.bid_opening_at, "YYYY-MM-DD HH:mm")} · {group.children.length} 个项目 ·{" "}
-                {group.attachment_count} 个附件
-              </div>
+              <div className="font-medium">{dateNode.dateKey}</div>
+              <div className="text-xs text-gray-500">{dateNode.projects.length} 个项目</div>
             </div>
           </div>
         ),
-        extra: (
-          <Space size={4} onClick={(e) => e.stopPropagation()}>
-            <Button
-              type="link"
-              size="small"
-              icon={<DownloadOutlined />}
-              disabled={
-                !group.attachments.some((file) => file.attachment_type === "tender_doc") &&
-                !group.children.some((project) =>
-                  project.attachments.some((file) => file.attachment_type === "tender_doc"),
-                )
-              }
-              onClick={() => onDownloadGroupTender(group)}
-            >
-              下载招标文件
-            </Button>
-            <Button type="link" size="small" onClick={() => onEditGroup(group)}>
-              编辑组
-            </Button>
-            <Button type="link" size="small" icon={<PlusOutlined />} onClick={() => onAddProject(group.id)}>
-              添加
-            </Button>
-          </Space>
-        ),
         children:
-          group.children.length === 0 ? (
-            <Empty description="组内暂无项目" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          dateNode.projects.length === 0 ? (
+            <Empty description="该开标日暂无项目" image={Empty.PRESENTED_IMAGE_SIMPLE} />
           ) : (
             <div className="flex flex-col gap-3">
-              {group.children.map((record) => {
+              {dateNode.projects.map((projectItem) => {
+                const group = groups.find((item) => item.db_id === projectItem.dbId);
+                if (!group) return null;
+                const record = projectItem.project;
+                if (!record) {
+                  return (
+                    <Card key={projectItem.key} size="small" className="shadow-sm">
+                      <EllipsisTooltip title={projectItem.projectName}>
+                        <div className="font-medium">{projectItem.projectName}</div>
+                      </EllipsisTooltip>
+                      <div className="mt-2 text-sm text-gray-500">暂无参加单位</div>
+                      <Space wrap className="mt-3">
+                        <Button size="small" onClick={() => onEditGroup(group)}>
+                          编辑项目
+                        </Button>
+                        <Button size="small" icon={<PlusOutlined />} onClick={() => onAddProject(group.db_id)}>
+                          添加参加单位
+                        </Button>
+                        {canDeleteGroup && (
+                          <Popconfirm
+                            title="删除该项目组？"
+                            description="会删除项目组下的参加单位和文件版本。"
+                            onConfirm={() => onDeleteGroup(group)}
+                          >
+                            <Button size="small" danger icon={<DeleteOutlined />}>
+                              删除项目组
+                            </Button>
+                          </Popconfirm>
+                        )}
+                      </Space>
+                    </Card>
+                  );
+                }
                 const statusMeta = PROJECT_STATUS_MAP[record.status];
                 return (
                   <Card key={record.id} size="small" className="shadow-sm">
@@ -208,7 +224,7 @@ export default function ProjectMobileCardList({
                                     type="link"
                                     size="small"
                                     icon={<HistoryOutlined />}
-                                    onClick={() => onUploadRevision(group.id, record, company)}
+                                    onClick={() => onUploadRevision(group.db_id, record, company)}
                                   />
                                 </Tooltip>
                                 <Popconfirm
@@ -224,7 +240,7 @@ export default function ProjectMobileCardList({
                                 const syncMeta =
                                   THIRD_PARTY_SYNC_STATUS_MAP[version.third_party_sync_status ?? "unsynced"];
                                 const reportMeta =
-                                  REPORT_STATUS_MAP[hasVersionReport(version) ? "uploaded" : "pending"];
+                                  REPORT_STATUS_MAP[resolveReportStatus(version)];
                                 const nextSyncStatus: ThirdPartySyncStatus =
                                   version.third_party_sync_status === "synced" ? "unsynced" : "synced";
 
@@ -233,29 +249,54 @@ export default function ProjectMobileCardList({
                                     <div className="flex items-center justify-between gap-2">
                                       <div className="flex min-w-0 flex-1 items-center">
                                         <span className="shrink-0">v{version.version_number} · </span>
-                                        <BidFilePreviewLink
-                                          attachmentId={version.id}
-                                          filename={version.original_name}
-                                        />
+                                        {access.canPreview ? (
+                                          <BidFilePreviewLink
+                                            attachmentId={version.id}
+                                            filename={version.original_name}
+                                          />
+                                        ) : (
+                                          <EllipsisTooltip title={version.original_name}>
+                                            <span>{version.original_name}</span>
+                                          </EllipsisTooltip>
+                                        )}
                                       </div>
                                       <Space size={0}>
-                                        <Tooltip title="预览">
-                                          <Button
-                                            type="link"
-                                            size="small"
-                                            icon={<EyeOutlined />}
-                                            onClick={() => onPreviewVersion(version)}
-                                          />
-                                        </Tooltip>
-                                        <Tooltip title="下载投标文件">
-                                          <Button
-                                            type="link"
-                                            size="small"
-                                            icon={<DownloadOutlined />}
-                                            onClick={() => onDownloadVersion(version)}
-                                          />
-                                        </Tooltip>
-                                        {isSuperAdmin && (
+                                        {access.canPreview && (
+                                          <Tooltip title="预览">
+                                            <Button
+                                              type="link"
+                                              size="small"
+                                              icon={<EyeOutlined />}
+                                              onClick={() => onPreviewVersion(version)}
+                                            />
+                                          </Tooltip>
+                                        )}
+                                        {access.canDownload && (
+                                          <Tooltip title="下载投标文件">
+                                            <Button
+                                              type="link"
+                                              size="small"
+                                              icon={<DownloadOutlined />}
+                                              onClick={() => onDownloadVersion(version)}
+                                            />
+                                          </Tooltip>
+                                        )}
+                                        {access.canAnalysis && (
+                                          <Tooltip title="分析">
+                                            <Button
+                                              type="link"
+                                              size="small"
+                                              icon={<FileSearchOutlined />}
+                                              loading={
+                                                analyzingVersionId === version.id ||
+                                                version.report_status === "analyzing"
+                                              }
+                                              disabled={version.report_status === "analyzing"}
+                                              onClick={() => onAnalyzeVersion(version)}
+                                            />
+                                          </Tooltip>
+                                        )}
+                                        {access.canSync && (
                                           <Tooltip
                                             title={nextSyncStatus === "synced" ? "标为已同步" : "标为未同步"}
                                           >
@@ -269,21 +310,32 @@ export default function ProjectMobileCardList({
                                             />
                                           </Tooltip>
                                         )}
-                                        {isSuperAdmin && (
-                                          <Upload
-                                            accept={ACCEPTED_FILE_TYPES}
-                                            showUploadList={false}
-                                            beforeUpload={(file) => {
-                                              void onUploadVersionReport(version, file);
-                                              return false;
-                                            }}
-                                          >
-                                            <Tooltip title="上传报告">
-                                              <Button type="link" size="small" icon={<UploadOutlined />} />
-                                            </Tooltip>
-                                          </Upload>
-                                        )}
-                                        {hasVersionReport(version) && (
+                                        {hasVersionReport(version)
+                                          ? access.canReportView && (
+                                              <Tooltip title="查看报告">
+                                                <Button
+                                                  type="link"
+                                                  size="small"
+                                                  icon={<FileSearchOutlined />}
+                                                  onClick={() => onOpenVersionReport(version)}
+                                                />
+                                              </Tooltip>
+                                            )
+                                          : access.canReportUpload && (
+                                              <Upload
+                                                accept={ACCEPTED_FILE_TYPES}
+                                                showUploadList={false}
+                                                beforeUpload={(file) => {
+                                                  void onUploadVersionReport(version, file);
+                                                  return false;
+                                                }}
+                                              >
+                                                <Tooltip title="上传报告文件">
+                                                  <Button type="link" size="small" icon={<UploadOutlined />} />
+                                                </Tooltip>
+                                              </Upload>
+                                            )}
+                                        {version.report_original_name && access.canReportDownload && (
                                           <Tooltip title="下载报告">
                                             <Button
                                               type="link"
@@ -293,22 +345,24 @@ export default function ProjectMobileCardList({
                                             />
                                           </Tooltip>
                                         )}
-                                        <Popconfirm
-                                          title="删除该版本？"
-                                          onConfirm={() => onDeleteVersion(version.id)}
-                                        >
-                                          <Button type="link" size="small" danger icon={<DeleteOutlined />} />
-                                        </Popconfirm>
+                                        {access.canDelete && (
+                                          <Popconfirm
+                                            title="删除该版本？"
+                                            onConfirm={() => onDeleteVersion(version.id)}
+                                          >
+                                            <Button type="link" size="small" danger icon={<DeleteOutlined />} />
+                                          </Popconfirm>
+                                        )}
                                       </Space>
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2 pl-5">
                                       <span className="text-gray-500">分析状态</span>
                                       <AnalysisStatusSwitch
                                         value={version.analysis_status}
-                                        disabled={!isSuperAdmin}
+                                        disabled={!access.canAnalysis}
                                         onChange={(checked) => onAnalysisStatusChange(version, checked)}
                                       />
-                                      {isSuperAdmin && (
+                                      {access.canSync && (
                                         <>
                                           <span className="text-gray-500">三方同步状态</span>
                                           <Tag color={syncMeta.color} className="m-0">
@@ -319,6 +373,11 @@ export default function ProjectMobileCardList({
                                       <Tag color={reportMeta.color} className="m-0">
                                         报告{reportMeta.label}
                                       </Tag>
+                                      {version.report_final_score != null && (
+                                        <Tag color="orange" className="m-0">
+                                          {version.report_final_score}分
+                                        </Tag>
+                                      )}
                                     </div>
                                   </div>
                                 );
@@ -330,17 +389,39 @@ export default function ProjectMobileCardList({
                     )}
 
                     <Space wrap className="w-full">
-                      <Button size="small" icon={<EyeOutlined />} onClick={() => onDetail(record.id)}>
-                        详情
-                      </Button>
-                      <Button size="small" icon={<EditOutlined />} onClick={() => onEdit(record.id)}>
-                        编辑
-                      </Button>
-                      <Popconfirm title="确定删除该项目？" onConfirm={() => onDelete(record.id)}>
-                        <Button size="small" danger icon={<DeleteOutlined />}>
-                          删除
+                      {access.canDownload && (
+                        <Button size="small" icon={<DownloadOutlined />} onClick={() => onDownloadGroupTender(group)}>
+                          招标文件
                         </Button>
-                      </Popconfirm>
+                      )}
+                      {access.canView && (
+                        <Button size="small" icon={<EyeOutlined />} onClick={() => onDetail(record.id)}>
+                          详情
+                        </Button>
+                      )}
+                      {access.canEdit && (
+                        <Button size="small" icon={<EditOutlined />} onClick={() => onEdit(record.id)}>
+                          编辑
+                        </Button>
+                      )}
+                      {access.canDelete && (
+                        <Popconfirm title="确定删除该项目？" onConfirm={() => onDelete(record.id)}>
+                          <Button size="small" danger icon={<DeleteOutlined />}>
+                            删除
+                          </Button>
+                        </Popconfirm>
+                      )}
+                      {canDeleteGroup && (
+                        <Popconfirm
+                          title="删除该项目组？"
+                          description="会删除项目组下的参加单位和文件版本。"
+                          onConfirm={() => onDeleteGroup(group)}
+                        >
+                          <Button size="small" danger icon={<DeleteOutlined />}>
+                            删除项目组
+                          </Button>
+                        </Popconfirm>
+                      )}
                     </Space>
                   </Card>
                 );

@@ -682,6 +682,40 @@ def _migrate_bid_file_sync_and_report_fields() -> None:
         )
 
 
+def _migrate_bid_report_data_field() -> None:
+    """为投标文件版本补充结构化报告 JSON 数据字段。"""
+    inspector = inspect(engine)
+    if "project_attachments" not in inspector.get_table_names():
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS app_migrations (
+                    name VARCHAR(128) PRIMARY KEY,
+                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        marker = conn.execute(
+            text("SELECT name FROM app_migrations WHERE name = :name"),
+            {"name": "bid_report_data_v1"},
+        ).fetchone()
+        if marker:
+            return
+
+        columns = {col["name"] for col in inspector.get_columns("project_attachments")}
+        if "report_data" not in columns:
+            conn.execute(text("ALTER TABLE project_attachments ADD COLUMN report_data TEXT"))
+
+        conn.execute(
+            text("INSERT INTO app_migrations (name) VALUES (:name)"),
+            {"name": "bid_report_data_v1"},
+        )
+
+
 def _migrate_bid_file_sync_metadata() -> None:
     """Store local analysis-platform association IDs returned by third-party sync ACK."""
     inspector = inspect(engine)
@@ -716,6 +750,299 @@ def _migrate_bid_file_sync_metadata() -> None:
         )
 
 
+def _migrate_third_party_bidding_fields() -> None:
+    """补充与第三方上传接口对齐的项目/文件字段。"""
+    inspector = inspect(engine)
+    if "bidding_project_groups" not in inspector.get_table_names():
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS app_migrations (
+                    name VARCHAR(128) PRIMARY KEY,
+                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        marker = conn.execute(
+            text("SELECT name FROM app_migrations WHERE name = :name"),
+            {"name": "third_party_bidding_fields_v1"},
+        ).fetchone()
+        if marker:
+            return
+
+        group_columns = {col["name"] for col in inspector.get_columns("bidding_project_groups")}
+        if "third_party_project_id" not in group_columns:
+            conn.execute(
+                text("ALTER TABLE bidding_project_groups ADD COLUMN third_party_project_id VARCHAR(100)")
+            )
+        if "project_code" not in group_columns:
+            conn.execute(text("ALTER TABLE bidding_project_groups ADD COLUMN project_code VARCHAR(100)"))
+        if "evaluation_date" not in group_columns:
+            conn.execute(text("ALTER TABLE bidding_project_groups ADD COLUMN evaluation_date DATETIME"))
+
+        conn.execute(
+            text(
+                """
+                UPDATE bidding_project_groups
+                SET project_code = printf('QZ-%06d', id)
+                WHERE project_code IS NULL OR project_code = ''
+                """
+            )
+        )
+
+        for table_name in ("project_attachments", "group_attachments"):
+            if table_name not in inspector.get_table_names():
+                continue
+            attachment_columns = {col["name"] for col in inspector.get_columns(table_name)}
+            if "third_party_file_name" not in attachment_columns:
+                conn.execute(
+                    text(f"ALTER TABLE {table_name} ADD COLUMN third_party_file_name VARCHAR(255)")
+                )
+            conn.execute(
+                text(
+                    f"""
+                    UPDATE {table_name}
+                    SET third_party_file_name = original_name
+                    WHERE third_party_file_name IS NULL OR third_party_file_name = ''
+                    """
+                )
+            )
+
+        conn.execute(
+            text("INSERT INTO app_migrations (name) VALUES (:name)"),
+            {"name": "third_party_bidding_fields_v1"},
+        )
+
+
+def _migrate_group_attachment_third_party_file_name() -> None:
+    """v1 迁移已执行时，group_attachments 可能仍缺少 third_party_file_name。"""
+    inspector = inspect(engine)
+    if "group_attachments" not in inspector.get_table_names():
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS app_migrations (
+                    name VARCHAR(128) PRIMARY KEY,
+                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        marker = conn.execute(
+            text("SELECT name FROM app_migrations WHERE name = :name"),
+            {"name": "group_attachment_third_party_file_name_v1"},
+        ).fetchone()
+        if marker:
+            return
+
+        columns = {col["name"] for col in inspector.get_columns("group_attachments")}
+        if "third_party_file_name" not in columns:
+            conn.execute(
+                text("ALTER TABLE group_attachments ADD COLUMN third_party_file_name VARCHAR(255)")
+            )
+        conn.execute(
+            text(
+                """
+                UPDATE group_attachments
+                SET third_party_file_name = original_name
+                WHERE third_party_file_name IS NULL OR third_party_file_name = ''
+                """
+            )
+        )
+        conn.execute(
+            text("INSERT INTO app_migrations (name) VALUES (:name)"),
+            {"name": "group_attachment_third_party_file_name_v1"},
+        )
+
+
+def _migrate_roles_v1() -> None:
+    inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS app_migrations (
+                    name VARCHAR(128) PRIMARY KEY,
+                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        marker = conn.execute(
+            text("SELECT name FROM app_migrations WHERE name = :name"),
+            {"name": "roles_v1"},
+        ).fetchone()
+        if marker:
+            return
+
+        user_columns = {col["name"] for col in inspector.get_columns("users")}
+        if "role_id" not in user_columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN role_id INTEGER REFERENCES roles(id)"))
+
+        conn.execute(
+            text("INSERT INTO app_migrations (name) VALUES (:name)"),
+            {"name": "roles_v1"},
+        )
+
+    from app.services import roles as role_service
+
+    with SessionLocal() as db:
+        role_service.seed_system_roles(db)
+        super_admin_role = role_service.get_role_by_code(db, role_service.SUPER_ADMIN_ROLE_CODE)
+        default_role = role_service.get_role_by_code(db, role_service.DEFAULT_USER_ROLE_CODE)
+        if not super_admin_role or not default_role:
+            return
+
+        users = db.execute(text("SELECT id, role FROM users WHERE role_id IS NULL")).fetchall()
+        for row in users:
+            user_id, role_value = row[0], row[1]
+            target_role_id = super_admin_role.id if role_value == "super_admin" else default_role.id
+            db.execute(
+                text("UPDATE users SET role_id = :role_id WHERE id = :user_id"),
+                {"role_id": target_role_id, "user_id": user_id},
+            )
+        db.commit()
+
+
+def _migrate_user_permissions() -> None:
+    inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS app_migrations (
+                    name VARCHAR(128) PRIMARY KEY,
+                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        marker = conn.execute(
+            text("SELECT name FROM app_migrations WHERE name = :name"),
+            {"name": "user_permissions_v1"},
+        ).fetchone()
+        if marker:
+            return
+
+        columns = {col["name"] for col in inspector.get_columns("users")}
+        if "permissions_json" not in columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN permissions_json TEXT"))
+
+        conn.execute(
+            text("INSERT INTO app_migrations (name) VALUES (:name)"),
+            {"name": "user_permissions_v1"},
+        )
+
+
+def _migrate_report_status_v1() -> None:
+    inspector = inspect(engine)
+    if "project_attachments" not in inspector.get_table_names():
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS app_migrations (
+                    name VARCHAR(128) PRIMARY KEY,
+                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        marker = conn.execute(
+            text("SELECT name FROM app_migrations WHERE name = :name"),
+            {"name": "report_status_v1"},
+        ).fetchone()
+        if marker:
+            return
+
+        columns = {col["name"] for col in inspector.get_columns("project_attachments")}
+        if "report_status" not in columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE project_attachments "
+                    "ADD COLUMN report_status VARCHAR(32) NOT NULL DEFAULT 'pending'"
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    UPDATE project_attachments
+                    SET report_status = 'completed'
+                    WHERE report_data IS NOT NULL AND report_data != ''
+                       OR report_uploaded_at IS NOT NULL
+                    """
+                )
+            )
+
+        group_columns = (
+            {col["name"] for col in inspector.get_columns("bidding_project_groups")}
+            if "bidding_project_groups" in inspector.get_table_names()
+            else set()
+        )
+        if "third_party_db_id" not in group_columns:
+            conn.execute(
+                text("ALTER TABLE bidding_project_groups ADD COLUMN third_party_db_id VARCHAR(100)")
+            )
+
+        conn.execute(
+            text("INSERT INTO app_migrations (name) VALUES (:name)"),
+            {"name": "report_status_v1"},
+        )
+
+
+def _migrate_third_party_submission_file_id_v1() -> None:
+    inspector = inspect(engine)
+    if "project_attachments" not in inspector.get_table_names():
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS app_migrations (
+                    name VARCHAR(128) PRIMARY KEY,
+                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        marker = conn.execute(
+            text("SELECT name FROM app_migrations WHERE name = :name"),
+            {"name": "third_party_submission_file_id_v1"},
+        ).fetchone()
+        if marker:
+            return
+
+        columns = {col["name"] for col in inspector.get_columns("project_attachments")}
+        if "third_party_submission_file_id" not in columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE project_attachments "
+                    "ADD COLUMN third_party_submission_file_id VARCHAR(100)"
+                )
+            )
+
+        conn.execute(
+            text("INSERT INTO app_migrations (name) VALUES (:name)"),
+            {"name": "third_party_submission_file_id_v1"},
+        )
+
+
 def init_db() -> None:
     from app import models  # noqa: F401
 
@@ -729,7 +1056,14 @@ def init_db() -> None:
     _migrate_bid_analysis_status()
     _migrate_third_party_sync_status()
     _migrate_bid_file_sync_and_report_fields()
+    _migrate_bid_report_data_field()
     _migrate_bid_file_sync_metadata()
+    _migrate_third_party_bidding_fields()
+    _migrate_group_attachment_third_party_file_name()
+    _migrate_user_permissions()
+    _migrate_roles_v1()
+    _migrate_report_status_v1()
+    _migrate_third_party_submission_file_id_v1()
     _migrate_operation_log_timezone()
     _migrate_attachment_timezone()
     _migrate_bidding_entity_timezone()

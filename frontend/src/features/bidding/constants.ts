@@ -1,4 +1,5 @@
-import type { AttachmentType, ProjectStatus, ThirdPartySyncStatus } from "./types";
+import type { AttachmentType, ProjectStatus, ReportStatus, ThirdPartySyncStatus } from "./types";
+import type { BidVersionListItem } from "./types";
 
 export const PROJECT_STATUS_MAP: Record<
   ProjectStatus,
@@ -23,11 +24,20 @@ export const THIRD_PARTY_SYNC_STATUS_MAP: Record<
 };
 
 export const REPORT_STATUS_MAP: Record<
-  "pending" | "uploaded",
-  { label: string; color: "default" | "success" }
+  ReportStatus,
+  { label: string; color: "default" | "processing" | "success" | "error" }
 > = {
-  pending: { label: "未上传", color: "default" },
-  uploaded: { label: "已上传", color: "success" },
+  pending: { label: "待分析", color: "default" },
+  analyzing: { label: "分析中", color: "processing" },
+  completed: { label: "分析完成", color: "success" },
+  failed: { label: "分析失败", color: "error" },
 };
+
+export function resolveReportStatus(
+  record: Pick<BidVersionListItem, "report_status" | "report_has_data">,
+): ReportStatus {
+  if (record.report_status) return record.report_status;
+  return record.report_has_data ? "completed" : "pending";
+}
 
 export const ACCEPTED_FILE_TYPES = ".pdf,.doc,.docx,.xls,.xlsx,.zip,.rar,.7z";

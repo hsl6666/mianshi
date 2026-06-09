@@ -1,4 +1,5 @@
 import { apiClient } from "@/request/client";
+import type { PermissionsMap } from "@/constants/permissions";
 import type { UserRole } from "@/store/authStore";
 
 export interface LoginResponse {
@@ -15,12 +16,22 @@ export interface CurrentUserResponse {
   role: UserRole;
   display_name?: string | null;
   is_super_admin: boolean;
+  permissions: PermissionsMap;
+}
+
+export interface RoleOption {
+  id: number;
+  name: string;
+  code: string;
+  is_system: boolean;
 }
 
 export interface UserItem {
   id: number;
   username: string;
   role: UserRole;
+  role_id?: number | null;
+  role_name?: string | null;
   is_active: boolean;
   display_name?: string | null;
   created_at: string;
@@ -30,7 +41,7 @@ export interface UserItem {
 export interface UserFormValues {
   username: string;
   password?: string;
-  role: UserRole;
+  role_id: number;
   display_name?: string;
   is_active: boolean;
 }
@@ -62,6 +73,11 @@ export async function login(username: string, password: string): Promise<LoginRe
 
 export async function fetchMe(): Promise<CurrentUserResponse> {
   const { data } = await apiClient.get<CurrentUserResponse>("/api/auth/me");
+  return data;
+}
+
+export async function fetchRoleOptions(): Promise<RoleOption[]> {
+  const { data } = await apiClient.get<RoleOption[]>("/api/users/role-options");
   return data;
 }
 

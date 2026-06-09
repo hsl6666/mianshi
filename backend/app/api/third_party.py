@@ -75,13 +75,16 @@ def _get_bidding_file_basic_info(
         and project_service.attachment_file_exists(attachment)
     ][:bid_file_limit]
 
+    group = project.group
     return ThirdPartyBiddingFileInfo(
         project_id=project.id,
-        group_id=project.group_id,
-        group_name=project.group.name,
+        db_id=project.group_id,
+        group_name=group.name,
         project_name=project.name,
         participating_units=project.participating_units,
-        bid_opening_at=project.bid_opening_at,
+        bid_opening_time=project.bid_opening_at,
+        project_code=group.project_code,
+        third_party_project_id=group.third_party_project_id,
         third_party_sync_status=project.third_party_sync_status,
         tender_file=ThirdPartyFileOut(
             id=tender_file.id,

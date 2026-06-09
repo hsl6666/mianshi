@@ -118,8 +118,8 @@ class ThirdPartySyncAckTests(unittest.TestCase):
                 data={
                     "name": "SYNC-TEST Uploaded Project",
                     "participating_units": "SYNC-TEST Uploaded Company",
-                    "group_name": "SYNC-TEST Uploaded Group",
-                    "group_bid_opening_at": "2026-06-03T09:30:00",
+                    "project_name": "SYNC-TEST Uploaded Group",
+                    "bid_opening_time": "2026-06-03T09:30:00",
                 },
                 files={
                     "tender_doc": (
@@ -127,7 +127,7 @@ class ThirdPartySyncAckTests(unittest.TestCase):
                         b"SYNC-TEST uploaded tender",
                         "application/pdf",
                     ),
-                    "bid_doc": (
+                    "bid_file": (
                         "SYNC-TEST uploaded response.docx",
                         b"SYNC-TEST uploaded response",
                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

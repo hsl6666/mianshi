@@ -20,30 +20,32 @@ import { formatChinaTime } from "@/utils/date";
 import {
   createUser,
   deleteUser,
+  fetchRoleOptions,
   fetchUsers,
   updateUser,
+  type RoleOption,
   type UserFormValues,
   type UserItem,
 } from "@/api/auth";
-import type { UserRole } from "@/store/authStore";
-
-const ROLE_LABEL: Record<UserRole, string> = {
-  super_admin: "超级管理员",
-  user: "普通用户",
-};
+import { usePermission } from "@/hooks/usePermission";
 
 interface FormState {
   username: string;
   password?: string;
-  role: UserRole;
+  role_id: number;
   display_name?: string;
   is_active: boolean;
 }
 
 export default function UserManagementPage() {
+  const { can } = usePermission();
+  const canCreate = can("users", "create");
+  const canEdit = can("users", "edit");
+  const canDelete = can("users", "delete");
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [users, setUsers] = useState<UserItem[]>([]);
+  const [roleOptions, setRoleOptions] = useState<RoleOption[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<UserItem | null>(null);
   const [form] = Form.useForm<FormState>();
@@ -51,8 +53,9 @@ export default function UserManagementPage() {
   const loadUsers = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchUsers();
-      setUsers(data);
+      const [userData, roles] = await Promise.all([fetchUsers(), fetchRoleOptions()]);
+      setUsers(userData);
+      setRoleOptions(roles);
     } catch (error) {
       message.error(error instanceof Error ? error.message : "加载用户失败");
     } finally {
@@ -64,10 +67,12 @@ export default function UserManagementPage() {
     loadUsers();
   }, [loadUsers]);
 
+  const defaultRoleId = roleOptions.find((item) => item.code === "default_user")?.id ?? roleOptions[0]?.id;
+
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ role: "user", is_active: true });
+    form.setFieldsValue({ role_id: defaultRoleId, is_active: true });
     setModalOpen(true);
   };
 
@@ -75,7 +80,7 @@ export default function UserManagementPage() {
     setEditing(record);
     form.setFieldsValue({
       username: record.username,
-      role: record.role,
+      role_id: record.role_id ?? defaultRoleId,
       display_name: record.display_name ?? undefined,
       is_active: record.is_active,
       password: undefined,
@@ -89,7 +94,7 @@ export default function UserManagementPage() {
       setSubmitting(true);
       if (editing) {
         const payload: Partial<UserFormValues> = {
-          role: values.role,
+          role_id: values.role_id,
           display_name: values.display_name,
           is_active: values.is_active,
         };
@@ -104,7 +109,7 @@ export default function UserManagementPage() {
         await createUser({
           username: values.username.trim(),
           password: values.password,
-          role: values.role,
+          role_id: values.role_id,
           display_name: values.display_name,
           is_active: values.is_active,
         });
@@ -140,10 +145,10 @@ export default function UserManagementPage() {
     },
     {
       title: "角色",
-      dataIndex: "role",
-      width: 120,
-      render: (role: UserRole) => (
-        <Tag color={role === "super_admin" ? "gold" : "blue"}>{ROLE_LABEL[role]}</Tag>
+      dataIndex: "role_name",
+      width: 140,
+      render: (roleName: string | null | undefined, record) => (
+        <Tag color={record.role === "super_admin" ? "gold" : "blue"}>{roleName || "—"}</Tag>
       ),
     },
     {
@@ -166,10 +171,12 @@ export default function UserManagementPage() {
       width: 160,
       render: (_, record) => (
         <Space>
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEdit(record)}>
-            编辑
-          </Button>
-          {record.username !== "cqzsxh" && (
+          {canEdit && (
+            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEdit(record)}>
+              编辑
+            </Button>
+          )}
+          {canDelete && record.username !== "cqzsxh" && (
             <Popconfirm title="确定删除该用户？" onConfirm={() => handleDelete(record.id)}>
               <Button type="link" size="small" danger>
                 删除
@@ -187,11 +194,13 @@ export default function UserManagementPage() {
         <Typography.Title level={4} className="!mb-0">
           用户管理
         </Typography.Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-          新建用户
-        </Button>
+        {canCreate && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            新建用户
+          </Button>
+        )}
       </div>
-      <Table rowKey="id" loading={loading} columns={columns} dataSource={users} pagination={false} scroll={{ x: 720 }} />
+      <Table rowKey="id" loading={loading} columns={columns} dataSource={users} pagination={false} scroll={{ x: 760 }} />
 
       <Modal
         title={editing ? "编辑用户" : "新建用户"}
@@ -219,13 +228,13 @@ export default function UserManagementPage() {
           <Form.Item name="display_name" label="显示名称">
             <Input placeholder="可选" />
           </Form.Item>
-          <Form.Item name="role" label="角色" rules={[{ required: true }]}>
+          <Form.Item name="role_id" label="角色" rules={[{ required: true, message: "请选择角色" }]}>
             <Select
               disabled={editing?.username === "cqzsxh"}
-              options={[
-                { value: "user", label: ROLE_LABEL.user },
-                { value: "super_admin", label: ROLE_LABEL.super_admin },
-              ]}
+              options={roleOptions.map((item) => ({
+                value: item.id,
+                label: item.is_system ? item.name : `${item.name}（自定义）`,
+              }))}
             />
           </Form.Item>
           <Form.Item name="is_active" label="启用" valuePropName="checked">

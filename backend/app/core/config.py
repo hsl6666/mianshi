@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     feishu_bid_notify_secret: str | None = None
     feishu_bid_notify_at_user_id: str | None = None
     feishu_bid_notify_timeout_seconds: float = 5.0
+    report_data_upload_api_key: str = "qz-report-data-upload-2026-06-04"
+    third_party_api_base_url: str = "http://101.42.182.149"
+    third_party_access_token: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
