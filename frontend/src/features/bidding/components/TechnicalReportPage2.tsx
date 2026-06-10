@@ -270,20 +270,30 @@ export default function TechnicalReportPage2() {
     if (!reportRef.current || downloading) return;
 
     setDownloading(true);
+    let exportNode: HTMLDivElement | null = null;
     try {
       const html2canvas = (await import("html2canvas")).default;
+      exportNode = reportRef.current.cloneNode(true) as HTMLDivElement;
+      exportNode.querySelectorAll('[data-report-export-skip="feedback-suggestion"]').forEach((node) => node.remove());
+      exportNode.setAttribute("data-report-export-temp", "true");
+      exportNode.style.position = "fixed";
+      exportNode.style.left = "-10000px";
+      exportNode.style.top = "0";
+      exportNode.style.pointerEvents = "none";
+      exportNode.style.zIndex = "-1";
+      document.body.appendChild(exportNode);
 
       await new Promise((resolve) => {
         requestAnimationFrame(resolve);
       });
 
-      const canvas = await html2canvas(reportRef.current, {
+      const canvas = await html2canvas(exportNode, {
         backgroundColor: "#f7fbfa",
         logging: false,
         scale: Math.min(window.devicePixelRatio || 1, 2),
         useCORS: true,
-        windowWidth: reportRef.current.scrollWidth,
-        windowHeight: reportRef.current.scrollHeight,
+        windowWidth: exportNode.scrollWidth,
+        windowHeight: exportNode.scrollHeight,
       });
 
       const fileName = `${projectInfo.title}${projectInfo.reportTitle}.png`.replace(/[\\/:*?"<>|]/g, "-");
@@ -295,6 +305,7 @@ export default function TechnicalReportPage2() {
       console.error(error);
       message.error("报告图片生成失败，请稍后重试");
     } finally {
+      exportNode?.remove();
       setDownloading(false);
     }
   };
@@ -660,7 +671,7 @@ export default function TechnicalReportPage2() {
 
   return (
     <div className="min-h-full bg-[#f7fbfa] text-slate-800">
-      <div className="sticky top-0 z-20 border-b border-teal-100/70 bg-white/90 backdrop-blur">
+      {/* <div className="sticky top-0 z-20 border-b border-teal-100/70 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-[1180px] justify-end px-4 py-3">
           <Button
             type="primary"
@@ -671,7 +682,7 @@ export default function TechnicalReportPage2() {
             下载报告
           </Button>
         </div>
-      </div>
+      </div> */}
 
       <div ref={reportRef} className="bg-[#f7fbfa] pb-12">
         <ReportHeaderPanel projectInfo={projectInfo} />
@@ -983,7 +994,7 @@ export default function TechnicalReportPage2() {
           </p>
         </section>
 
-        <section>
+        <section data-report-export-skip="feedback-suggestion">
           <ModuleSectionTitle title="八、反馈建议" subtitle="欢迎留下对整篇报告的意见和建议，我们会将其用于后续系统升级。" />
           <div className="rounded border border-slate-200 bg-white p-5 shadow-sm">
             <Input.TextArea
