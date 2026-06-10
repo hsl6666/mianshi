@@ -1,5 +1,7 @@
 import { formatChinaTime } from "@/utils/date";
+import { countVersionReportStats, type VersionReportStats } from "../constants";
 import type {
+  BidVersionListItem,
   BiddingCompanyListItem,
   BiddingProjectGroupTreeItem,
   BiddingProjectListItem,
@@ -67,4 +69,17 @@ export function buildDateTree(groups: BiddingProjectGroupTreeItem[]): HierarchyD
 
 export function countDateProjects(node: HierarchyDateNode) {
   return node.projects.length;
+}
+
+function collectVersionsFromCompanies(companies: BiddingCompanyListItem[]): BidVersionListItem[] {
+  return companies.flatMap((company) => company.children);
+}
+
+export function countDateNodeVersionStats(node: HierarchyDateNode): VersionReportStats {
+  const versions = node.projects.flatMap((project) => collectVersionsFromCompanies(project.companies));
+  return countVersionReportStats(versions);
+}
+
+export function countProjectItemVersionStats(projectItem: HierarchyProjectItem): VersionReportStats {
+  return countVersionReportStats(collectVersionsFromCompanies(projectItem.companies));
 }

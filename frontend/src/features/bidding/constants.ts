@@ -41,3 +41,32 @@ export function resolveReportStatus(
 }
 
 export const ACCEPTED_FILE_TYPES = ".pdf,.doc,.docx,.xls,.xlsx,.zip,.rar,.7z";
+
+export function formatVersionReportScore(
+  record: Pick<BidVersionListItem, "report_final_score" | "report_has_data">,
+): string {
+  if (!record.report_has_data || record.report_final_score == null) return "-";
+  const score = record.report_final_score;
+  const formatted = Number.isInteger(score) ? String(score) : score.toFixed(2).replace(/(\.\d)0$/, "$1");
+  return `${formatted}分`;
+}
+
+export interface VersionReportStats {
+  total: number;
+  incomplete: number;
+}
+
+export function countVersionReportStats(
+  versions: Pick<BidVersionListItem, "report_status" | "report_has_data">[],
+): VersionReportStats {
+  return versions.reduce<VersionReportStats>(
+    (acc, version) => {
+      acc.total += 1;
+      if (resolveReportStatus(version) !== "completed") {
+        acc.incomplete += 1;
+      }
+      return acc;
+    },
+    { total: 0, incomplete: 0 },
+  );
+}

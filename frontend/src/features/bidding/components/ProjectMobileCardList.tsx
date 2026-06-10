@@ -20,6 +20,7 @@ import AnalysisStatusSwitch from "./AnalysisStatusSwitch";
 import EllipsisTooltip from "./EllipsisTooltip";
 import {
   ACCEPTED_FILE_TYPES,
+  formatVersionReportScore,
   PROJECT_STATUS_MAP,
   REPORT_STATUS_MAP,
   resolveReportStatus,
@@ -64,6 +65,7 @@ interface ProjectMobileCardListProps {
     thirdPartySyncStatus: ThirdPartySyncStatus,
   ) => void;
   access: BiddingAccess;
+  isSuperAdmin: boolean;
   onDeleteVersion: (id: number) => void;
 }
 
@@ -92,6 +94,7 @@ export default function ProjectMobileCardList({
   onAnalysisStatusChange,
   onThirdPartySyncStatusChange,
   access,
+  isSuperAdmin,
   onDeleteVersion,
 }: ProjectMobileCardListProps) {
   const navigate = useNavigate();
@@ -241,6 +244,7 @@ export default function ProjectMobileCardList({
                                   REPORT_STATUS_MAP[resolveReportStatus(version)];
                                 const nextSyncStatus: ThirdPartySyncStatus =
                                   version.third_party_sync_status === "synced" ? "unsynced" : "synced";
+                                const scoreText = isSuperAdmin ? formatVersionReportScore(version) : "-";
 
                                 return (
                                   <div key={version.id} className="flex flex-col gap-1 text-xs text-gray-600">
@@ -364,9 +368,9 @@ export default function ProjectMobileCardList({
                                       <Tag color={reportMeta.color} className="m-0">
                                         报告{reportMeta.label}
                                       </Tag>
-                                      {version.report_final_score != null && (
+                                      {scoreText !== "-" && (
                                         <Tag color="orange" className="m-0">
-                                          {version.report_final_score}分
+                                          {scoreText}
                                         </Tag>
                                       )}
                                     </div>

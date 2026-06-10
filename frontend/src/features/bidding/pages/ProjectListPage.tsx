@@ -813,6 +813,7 @@ export default function ProjectListPage() {
               onAnalysisStatusChange={handleAnalysisStatusChange}
               onThirdPartySyncStatusChange={handleThirdPartySyncStatusChange}
               access={biddingAccess}
+              isSuperAdmin={isSuperAdmin}
               onDeleteVersion={handleDeleteBidVersion}
             />
             {paginationNode}
@@ -823,6 +824,7 @@ export default function ProjectListPage() {
               loading={loading}
               groups={items}
               access={biddingAccess}
+              isSuperAdmin={isSuperAdmin}
               canDeleteGroup={isSuperAdmin}
               onEditGroup={openEditGroup}
               onDeleteGroup={handleDeleteGroup}

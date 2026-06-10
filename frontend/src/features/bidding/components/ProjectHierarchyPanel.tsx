@@ -35,12 +35,20 @@ import BidFilePreviewLink from "./BidFilePreviewLink";
 import EllipsisTooltip from "./EllipsisTooltip";
 import {
   ACCEPTED_FILE_TYPES,
+  countVersionReportStats,
+  formatVersionReportScore,
   PROJECT_STATUS_MAP,
   REPORT_STATUS_MAP,
   resolveReportStatus,
   THIRD_PARTY_SYNC_STATUS_MAP,
+  type VersionReportStats,
 } from "../constants";
-import { buildDateTree, type HierarchyProjectItem } from "../utils/buildDateTree";
+import {
+  buildDateTree,
+  countDateNodeVersionStats,
+  countProjectItemVersionStats,
+  type HierarchyProjectItem,
+} from "../utils/buildDateTree";
 import { buildTechnicalReport2Url } from "../utils/technicalReport2Url";
 import type { BiddingAccess } from "@/constants/permissions";
 import type {
@@ -55,6 +63,7 @@ interface ProjectHierarchyPanelProps {
   loading: boolean;
   groups: BiddingProjectGroupTreeItem[];
   access: BiddingAccess;
+  isSuperAdmin: boolean;
   canDeleteGroup: boolean;
   onEditGroup: (group: BiddingProjectGroupTreeItem) => void;
   onDeleteGroup: (group: BiddingProjectGroupTreeItem) => void;
@@ -98,10 +107,22 @@ function projectDisplayName(item: HierarchyProjectItem) {
   return item.isPlaceholder ? item.projectName : item.project!.name;
 }
 
+function NavVersionStats({ stats, compact = false }: { stats: VersionReportStats; compact?: boolean }) {
+  return (
+    <span className={`inline-flex items-center gap-0.5 ${compact ? "text-xs" : "text-sm"}`}>
+      {!compact && <span className="text-gray-400">总数/未解析</span>}
+      <span className="font-semibold text-blue-600">{stats.total}</span>
+      <span className="text-gray-300">/</span>
+      <span className="font-semibold text-red-500">{stats.incomplete}</span>
+    </span>
+  );
+}
+
 export default function ProjectHierarchyPanel({
   loading,
   groups,
   access,
+  isSuperAdmin,
   canDeleteGroup,
   onEditGroup,
   onDeleteGroup,
@@ -130,6 +151,12 @@ export default function ProjectHierarchyPanel({
   const [selectedCompany, setSelectedCompany] = useState<SelectedCompany | null>(null);
 
   const groupMap = useMemo(() => new Map(groups.map((group) => [group.db_id, group])), [groups]);
+  const globalVersionStats = useMemo(() => {
+    const versions = groups.flatMap((group) =>
+      group.children.flatMap((project) => project.children.flatMap((company) => company.children)),
+    );
+    return countVersionReportStats(versions);
+  }, [groups]);
 
   useEffect(() => {
     if (dateTree.length === 0) {
@@ -280,6 +307,23 @@ export default function ProjectHierarchyPanel({
           </EllipsisTooltip>
         ),
     },
+    ...(isSuperAdmin
+      ? [
+          {
+            title: "分数",
+            key: "report_final_score",
+            width: 88,
+            render: (_: unknown, record: BidVersionListItem) => {
+              const scoreText = formatVersionReportScore(record);
+              return scoreText === "-" ? (
+                <span className="text-gray-400">-</span>
+              ) : (
+                <span className="font-medium text-orange-600">{scoreText}</span>
+              );
+            },
+          },
+        ]
+      : []),
     {
       title: "上传时间",
       dataIndex: "created_at",
@@ -428,10 +472,14 @@ export default function ProjectHierarchyPanel({
     <Spin spinning={loading}>
       <div className="flex min-h-[560px] gap-4">
       <div className="w-[320px] shrink-0 rounded-lg border border-gray-200 bg-gray-50/60">
-        <div className="border-b border-gray-200 px-3 py-2 text-sm font-medium text-gray-600">项目导航</div>
+        <div className="flex items-center justify-between gap-2 border-b border-gray-200 px-3 py-2">
+          <span className="text-sm font-medium text-gray-600">项目导航</span>
+          <NavVersionStats stats={globalVersionStats} />
+        </div>
         <div className="max-h-[640px] overflow-y-auto p-2">
           {dateTree.map((dateNode) => {
             const dateExpanded = expandedDates.includes(dateNode.dateKey);
+            const dateVersionStats = countDateNodeVersionStats(dateNode);
             return (
               <div key={dateNode.dateKey} className="mb-1">
                 <button
@@ -441,12 +489,13 @@ export default function ProjectHierarchyPanel({
                 >
                   <CalendarOutlined className="text-blue-500" />
                   <span className="flex-1 font-medium">{dateNode.dateKey}</span>
-                  <Badge count={dateNode.projects.length} color="blue" showZero />
+                  <NavVersionStats stats={dateVersionStats} compact />
                 </button>
 
                 {dateExpanded &&
                   dateNode.projects.map((projectItem) => {
                     const projectExpanded = expandedProjects.includes(projectItem.key);
+                    const projectVersionStats = countProjectItemVersionStats(projectItem);
                     const statusMeta = projectItem.project
                       ? PROJECT_STATUS_MAP[projectItem.project.status]
                       : null;
@@ -469,6 +518,7 @@ export default function ProjectHierarchyPanel({
                               </Tag>
                             )}
                           </button>
+                          <NavVersionStats stats={projectVersionStats} compact />
                           <Dropdown menu={{ items: renderProjectMenu(projectItem) }} trigger={["click"]}>
                             <Button
                               type="text"
@@ -573,7 +623,7 @@ export default function ProjectHierarchyPanel({
               columns={versionColumns}
               dataSource={selectedCompany.company.children}
               locale={{ emptyText: "暂无投标文件版本" }}
-              scroll={{ x: 1320 }}
+              scroll={{ x: isSuperAdmin ? 1408 : 1320 }}
             />
           </div>
         )}
