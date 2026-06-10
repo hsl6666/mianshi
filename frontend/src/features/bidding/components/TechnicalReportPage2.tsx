@@ -16,7 +16,12 @@ import {
 } from "@/api/reportFeedback";
 import {
   buildTechnicalReportPage2ViewModel,
+  calculateOptimizationGainRange,
+  calculateQualificationProbability,
+  calculateRankingEstimate,
   defaultTechnicalReportPage2ViewModel,
+  formatGainIncrement,
+  resolveScoreTier,
   type DimensionRow,
   type IssueFeedback,
   type IssueRow,
@@ -266,7 +271,8 @@ export default function TechnicalReportPage2() {
     () => mergeUrlContextIntoViewModel(viewModel, urlContext),
     [viewModel, urlContext],
   );
-  const { projectInfo, dimensions, issues, optimizations } = displayViewModel;
+  const { projectInfo, dimensions, issues, optimizations, totalFullScore, totalSimulatedScore } =
+    displayViewModel;
 
   useEffect(() => {
     if (!Number.isFinite(versionId) || versionId <= 0) {
@@ -317,10 +323,6 @@ export default function TechnicalReportPage2() {
       .catch(() => undefined);
   }, []);
 
-  const totalScore = useMemo(
-    () => dimensions.reduce((sum, row) => sum + row.score, 0),
-    [dimensions],
-  );
   const issueSummary = useMemo(
     () => ({
       A: issues.filter((issue) => issue.priority === "A").length,
@@ -330,11 +332,27 @@ export default function TechnicalReportPage2() {
     [issues],
   );
 
-  const displayScore = Number(totalScore.toFixed(1));
-  const scoreRangeLow = Math.floor(totalScore - 1.6);
-  const scoreRangeHigh = Math.ceil(totalScore + 2.4);
-  const optimizedLow = (displayScore + 3).toFixed(1);
-  const optimizedHigh = (displayScore + 5).toFixed(1);
+  const displayScore = Number(totalSimulatedScore.toFixed(2));
+  const displayFullScore = Number(totalFullScore.toFixed(2));
+  const scoreTier = useMemo(
+    () => resolveScoreTier(totalSimulatedScore, totalFullScore),
+    [totalSimulatedScore, totalFullScore],
+  );
+  const { incrementLow, incrementHigh } = useMemo(
+    () => calculateOptimizationGainRange(optimizations),
+    [optimizations],
+  );
+  const optimizedLow = (displayScore + incrementLow).toFixed(1);
+  const optimizedHigh = (displayScore + incrementHigh).toFixed(1);
+  const gainIncrementText = `${formatGainIncrement(incrementLow)} ~ ${formatGainIncrement(incrementHigh)}分`;
+  const qualificationProbability = useMemo(
+    () => calculateQualificationProbability(totalSimulatedScore, totalFullScore),
+    [totalSimulatedScore, totalFullScore],
+  );
+  const rankingEstimate = useMemo(
+    () => calculateRankingEstimate(totalSimulatedScore, totalFullScore),
+    [totalSimulatedScore, totalFullScore],
+  );
   const dimensionSummary =
     viewModel.dimensionSummary ??
     "技术文件已覆盖全部评分维度，先清理硬伤，再补索引、来源说明和图表文字化说明。";
@@ -587,7 +605,7 @@ export default function TechnicalReportPage2() {
         {
           type: "gauge",
           min: 0,
-          max: 100,
+          max: displayFullScore,
           startAngle: 90,
           endAngle: -270,
           radius: "82%",
@@ -622,7 +640,8 @@ export default function TechnicalReportPage2() {
           axisLabel: { show: false },
           detail: {
             valueAnimation: false,
-            formatter: (value: number) => `{score|${value.toFixed(1)}}\n{unit|/100}`,
+            formatter: (value: number) =>
+              `{score|${value.toFixed(2)}}\n{unit|/${displayFullScore % 1 === 0 ? displayFullScore.toFixed(0) : displayFullScore.toFixed(2)}}`,
             rich: {
               score: { color: "#ff7d00", fontSize: 42, fontWeight: 800, lineHeight: 48 },
               unit: { color: "#94a3b8", fontSize: 16, fontWeight: 700, lineHeight: 22 },
@@ -633,7 +652,7 @@ export default function TechnicalReportPage2() {
         },
       ],
     }),
-    [displayScore],
+    [displayScore, displayFullScore],
   );
 
   const radarOption = useMemo(
@@ -822,7 +841,7 @@ export default function TechnicalReportPage2() {
         type: "value",
         show: false,
         min: displayScore - 1,
-        max: displayScore + 6,
+        max: displayScore + Math.max(incrementHigh + 1, 2),
       },
       tooltip: { show: false },
       series: [
@@ -846,11 +865,11 @@ export default function TechnicalReportPage2() {
               ],
             },
           },
-          data: [displayScore, displayScore + 1.8, displayScore + 3.8],
+          data: [displayScore, displayScore + incrementLow, displayScore + incrementHigh],
         },
       ],
     }),
-    [displayScore],
+    [displayScore, incrementLow, incrementHigh],
   );
 
   const dimensionColumns = useMemo<ColumnsType<DimensionRow>>(
@@ -898,16 +917,30 @@ export default function TechnicalReportPage2() {
               <div className="h-48 w-full">
                 <ReactEcharts option={scoreGaugeOption} renderer="svg" />
               </div>
-              <span className="mt-3 inline-flex rounded-full bg-[#e0f2f1] px-8 py-2 text-sm font-bold text-[#0d7a6f]">
-                良好（偏上）
+              <span
+                className={`mt-3 inline-flex rounded-full px-8 py-2 text-sm font-bold ${scoreTier.tier.badgeClassName}`}
+              >
+                {scoreTier.tier.label}
               </span>
             </div>
 
             <div className="flex flex-col rounded-lg border border-slate-100 bg-white shadow-sm">
               <div className="grid grid-cols-3 gap-4 px-6 py-6">
-                <OverviewMetric label="得分区间" value={`${scoreRangeLow} - ${scoreRangeHigh}分`} hint="评审区间参考" />
-                <OverviewMetric label="入围概率" value="82%" hint="预测概率" />
-                <OverviewMetric label="排名预估" value="前30%" hint="同类项目参考" />
+                <OverviewMetric
+                  label="得分区间"
+                  value={scoreTier.scoreRangeText}
+                  hint={scoreTier.tier.hint}
+                />
+                <OverviewMetric
+                  label="入围概率"
+                  value={`${qualificationProbability}%`}
+                  hint="预测概率"
+                />
+                <OverviewMetric
+                  label="排名预估"
+                  value={rankingEstimate.text}
+                  hint={rankingEstimate.hint}
+                />
               </div>
               <div className="border-t border-slate-100" />
               <div className="grid grid-cols-5 gap-2 px-4 py-5">
@@ -922,7 +955,7 @@ export default function TechnicalReportPage2() {
             <div className="flex flex-col rounded-lg border border-slate-100 bg-white px-5 py-5 shadow-sm">
               <div className="text-center">
                 <div className="text-sm text-slate-500">预计可提升</div>
-                <div className="mt-1 text-3xl font-bold text-[#f53f3f]">+3 ~ +5分</div>
+                <div className="mt-1 text-3xl font-bold text-[#f53f3f]">{gainIncrementText}</div>
                 <div className="mt-1 text-xs text-slate-400">通过修改建议可提升</div>
               </div>
               <div className="mt-3 h-28">

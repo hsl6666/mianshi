@@ -51,6 +51,8 @@ export interface TechnicalReportPage2ViewModel {
   dimensions: DimensionRow[];
   issues: IssueRow[];
   optimizations: OptimizationRow[];
+  totalFullScore: number;
+  totalSimulatedScore: number;
   dimensionSummary?: string;
   issuePrioritySummaries?: Partial<Record<Priority, string>>;
   feedbackSuggestion?: string;
@@ -282,11 +284,16 @@ const defaultOptimizations: OptimizationRow[] = [
   },
 ];
 
+const defaultTotalFullScore = defaultDimensions.reduce((sum, row) => sum + row.maxScore, 0);
+const defaultTotalSimulatedScore = defaultDimensions.reduce((sum, row) => sum + row.score, 0);
+
 export const defaultTechnicalReportPage2ViewModel: TechnicalReportPage2ViewModel = {
   projectInfo: defaultProjectInfo,
   dimensions: defaultDimensions,
   issues: defaultIssues,
   optimizations: defaultOptimizations,
+  totalFullScore: defaultTotalFullScore,
+  totalSimulatedScore: defaultTotalSimulatedScore,
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -459,6 +466,27 @@ function mapDimensions(report: Record<string, unknown>): DimensionRow[] {
   return mapped.length > 0 ? mapped : defaultDimensions;
 }
 
+function mapScoreTotals(
+  report: Record<string, unknown>,
+  dimensions: DimensionRow[],
+): Pick<TechnicalReportPage2ViewModel, "totalFullScore" | "totalSimulatedScore"> {
+  const scoring = asRecord(report.scoring);
+  const scoreSummary = asRecord(report.score_summary);
+  const summedScore = dimensions.reduce((sum, row) => sum + row.score, 0);
+  const summedFull = dimensions.reduce((sum, row) => sum + row.maxScore, 0);
+
+  return {
+    totalFullScore: asNumber(
+      scoring?.total_full_score ?? scoreSummary?.full_score,
+      summedFull || defaultTotalFullScore,
+    ),
+    totalSimulatedScore: asNumber(
+      scoring?.total_simulated_score ?? scoreSummary?.final_score,
+      summedScore || defaultTotalSimulatedScore,
+    ),
+  };
+}
+
 function mapIssues(report: Record<string, unknown>): IssueRow[] {
   const rows = Array.isArray(report.issues) ? report.issues : [];
 
@@ -571,6 +599,7 @@ export function parseTechnicalReportPage2Data(raw: unknown): TechnicalReportPage
   const dimensions = mapDimensions(report);
   const issues = mapIssues(report);
   const optimizations = mapOptimizations(report);
+  const scoreTotals = mapScoreTotals(report, dimensions);
   const scoring = asRecord(report.scoring);
   const summary = asRecord(scoring?.summary);
 
@@ -579,6 +608,7 @@ export function parseTechnicalReportPage2Data(raw: unknown): TechnicalReportPage
     dimensions,
     issues,
     optimizations,
+    ...scoreTotals,
     dimensionSummary: asString(summary?.supplement_adjustment_direction) || undefined,
     issuePrioritySummaries: mapIssuePrioritySummaries(issues),
     feedbackSuggestion: asString(report.feedback_suggestion) || undefined,
@@ -589,4 +619,234 @@ export function parseTechnicalReportPage2Data(raw: unknown): TechnicalReportPage
 
 export function buildTechnicalReportPage2ViewModel(raw?: unknown): TechnicalReportPage2ViewModel {
   return parseTechnicalReportPage2Data(raw) ?? defaultTechnicalReportPage2ViewModel;
+}
+
+/** 从优化项「预计提升」文案中解析单项提分（支持 +0.15分、1-2分、预计提升3-5分 等格式） */
+export function parseOptimizationGain(gain?: string): number {
+  if (!gain) return 0;
+
+  const rangeMatch = gain.match(/提升\s*([\d.]+)\s*[-~～至]\s*([\d.]+)\s*分/);
+  if (rangeMatch) {
+    return (Number(rangeMatch[1]) + Number(rangeMatch[2])) / 2;
+  }
+
+  const singleMatch = gain.match(/提升\s*([\d.]+)\s*分/);
+  if (singleMatch) {
+    return Number(singleMatch[1]);
+  }
+
+  const prefixedRange = gain.match(/\+?\s*([\d.]+)\s*[-~～]\s*([\d.]+)\s*分/);
+  if (prefixedRange) {
+    return (Number(prefixedRange[1]) + Number(prefixedRange[2])) / 2;
+  }
+
+  const numbers = [...gain.matchAll(/(\d+(?:\.\d+)?)/g)].map((match) => Number(match[1]));
+  if (numbers.length === 0) return 0;
+  if (numbers.length === 1) return numbers[0];
+  return numbers.reduce((sum, value) => sum + value, 0) / numbers.length;
+}
+
+export interface OptimizationGainRange {
+  totalGain: number;
+  incrementLow: number;
+  incrementHigh: number;
+}
+
+/** 关键优化方向各项预计提分总计的 50%-80% 区间 */
+export function calculateOptimizationGainRange(optimizations: OptimizationRow[]): OptimizationGainRange {
+  const totalGain = optimizations.reduce((sum, item) => sum + parseOptimizationGain(item.gain), 0);
+  return {
+    totalGain,
+    incrementLow: Number((totalGain * 0.5).toFixed(1)),
+    incrementHigh: Number((totalGain * 0.8).toFixed(1)),
+  };
+}
+
+export function formatGainIncrement(value: number): string {
+  const formatted = Number.isInteger(value) ? String(value) : value.toFixed(1);
+  return `+${formatted}`;
+}
+
+/** 入围参考线：百分制 86~87 分、五分制 4.3~4.4 分，对应得分率 86%~87% */
+const QUALIFY_RATE_LOW = 0.86;
+const QUALIFY_RATE_HIGH = 0.87;
+
+function lerpRate(value: number, start: number, end: number, outStart: number, outEnd: number): number {
+  if (value <= start) return outStart;
+  if (value >= end) return outEnd;
+  return outStart + ((value - start) / (end - start)) * (outEnd - outStart);
+}
+
+/**
+ * 根据模拟得分与满分计算入围概率（5%~98%）。
+ * 以得分率 86%~87% 为入围临界区：低于 80% 概率偏低，86%~87% 约 55%~72%，92% 以上趋近 90%+。
+ */
+export function calculateQualificationProbability(simulatedScore: number, fullScore: number): number {
+  if (fullScore <= 0 || simulatedScore < 0) return 0;
+
+  const rate = simulatedScore / fullScore;
+  let probability: number;
+
+  if (rate < 0.8) {
+    probability = lerpRate(rate, 0.5, 0.8, 8, 35);
+  } else if (rate < QUALIFY_RATE_LOW) {
+    probability = lerpRate(rate, 0.8, QUALIFY_RATE_LOW, 35, 55);
+  } else if (rate < QUALIFY_RATE_HIGH) {
+    probability = lerpRate(rate, QUALIFY_RATE_LOW, QUALIFY_RATE_HIGH, 55, 72);
+  } else if (rate < 0.92) {
+    probability = lerpRate(rate, QUALIFY_RATE_HIGH, 0.92, 72, 90);
+  } else {
+    probability = lerpRate(Math.min(rate, 1), 0.92, 1, 90, 98);
+  }
+
+  return Math.round(Math.max(5, Math.min(98, probability)));
+}
+
+export interface ScoreTierDefinition {
+  label: string;
+  hint: string;
+  rateMin: number;
+  rateMax: number;
+  badgeClassName: string;
+}
+
+/** 得分率梯级：入围临界区 86%~87%（百分制 86~87 分 / 五分制 4.3~4.35 分） */
+export const SCORE_TIER_DEFINITIONS: ScoreTierDefinition[] = [
+  {
+    label: "较差",
+    hint: "竞争力不足",
+    rateMin: 0,
+    rateMax: 0.65,
+    badgeClassName: "bg-red-50 text-red-700",
+  },
+  {
+    label: "一般",
+    hint: "基础偏弱",
+    rateMin: 0.65,
+    rateMax: 0.75,
+    badgeClassName: "bg-orange-50 text-orange-700",
+  },
+  {
+    label: "中等",
+    hint: "中等水平",
+    rateMin: 0.75,
+    rateMax: 0.8,
+    badgeClassName: "bg-amber-50 text-amber-700",
+  },
+  {
+    label: "待提升",
+    hint: "未达入围线",
+    rateMin: 0.8,
+    rateMax: QUALIFY_RATE_LOW,
+    badgeClassName: "bg-slate-100 text-slate-600",
+  },
+  {
+    label: "良好",
+    hint: "入围临界区",
+    rateMin: QUALIFY_RATE_LOW,
+    rateMax: QUALIFY_RATE_HIGH,
+    badgeClassName: "bg-[#e0f2f1] text-[#0d7a6f]",
+  },
+  {
+    label: "良好偏上",
+    hint: "入围较稳",
+    rateMin: QUALIFY_RATE_HIGH,
+    rateMax: 0.92,
+    badgeClassName: "bg-teal-50 text-teal-700",
+  },
+  {
+    label: "优秀",
+    hint: "表现突出",
+    rateMin: 0.92,
+    rateMax: 0.96,
+    badgeClassName: "bg-emerald-50 text-emerald-700",
+  },
+  {
+    label: "优秀（顶尖）",
+    hint: "顶尖水平",
+    rateMin: 0.96,
+    rateMax: 1.001,
+    badgeClassName: "bg-green-50 text-green-800",
+  },
+];
+
+export interface ResolvedScoreTier {
+  tier: ScoreTierDefinition;
+  scoreRangeText: string;
+  rate: number;
+}
+
+function formatTierBoundary(score: number, fullScore: number): string {
+  const clamped = Math.max(0, Math.min(score, fullScore));
+  if (fullScore <= 10) {
+    const rounded = Math.round(clamped * 100) / 100;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2).replace(/(\.\d)0$/, "$1");
+  }
+  return String(Math.round(clamped));
+}
+
+export function resolveScoreTier(simulatedScore: number, fullScore: number): ResolvedScoreTier {
+  const rate = fullScore > 0 ? simulatedScore / fullScore : 0;
+  const tier =
+    SCORE_TIER_DEFINITIONS.find((item) => rate >= item.rateMin && rate < item.rateMax) ??
+    SCORE_TIER_DEFINITIONS[SCORE_TIER_DEFINITIONS.length - 1];
+
+  const rangeHigh = tier.rateMax > 1 ? fullScore : tier.rateMax * fullScore;
+  const scoreRangeText = `${formatTierBoundary(tier.rateMin * fullScore, fullScore)} - ${formatTierBoundary(rangeHigh, fullScore)}分`;
+
+  return { tier, scoreRangeText, rate };
+}
+
+export interface RankingEstimate {
+  text: string;
+  hint: string;
+  topPercent: number;
+}
+
+function resolveRankingHint(topPercent: number): string {
+  if (topPercent <= 12) return "领先梯队";
+  if (topPercent <= 22) return "竞争力强";
+  if (topPercent <= 38) return "中上位置";
+  if (topPercent <= 52) return "中游偏上";
+  if (topPercent <= 68) return "中游位置";
+  return "靠后位置";
+}
+
+/**
+ * 根据模拟得分与满分估算排名（前 X%，数值越小排名越靠前）。
+ * 与入围参考线对齐：86%~87% 约前 38%~42%，92% 以上约前 22% 以内，96% 以上约前 12% 以内。
+ */
+export function calculateRankingEstimate(simulatedScore: number, fullScore: number): RankingEstimate {
+  if (fullScore <= 0 || simulatedScore < 0) {
+    return { text: "—", hint: "暂无参考", topPercent: 100 };
+  }
+
+  const rate = simulatedScore / fullScore;
+  let topPercent: number;
+
+  if (rate < 0.65) {
+    topPercent = lerpRate(rate, 0.5, 0.65, 88, 72);
+  } else if (rate < 0.75) {
+    topPercent = lerpRate(rate, 0.65, 0.75, 72, 58);
+  } else if (rate < 0.8) {
+    topPercent = lerpRate(rate, 0.75, 0.8, 58, 50);
+  } else if (rate < QUALIFY_RATE_LOW) {
+    topPercent = lerpRate(rate, 0.8, QUALIFY_RATE_LOW, 50, 42);
+  } else if (rate < QUALIFY_RATE_HIGH) {
+    topPercent = lerpRate(rate, QUALIFY_RATE_LOW, QUALIFY_RATE_HIGH, 42, 38);
+  } else if (rate < 0.92) {
+    topPercent = lerpRate(rate, QUALIFY_RATE_HIGH, 0.92, 38, 22);
+  } else if (rate < 0.96) {
+    topPercent = lerpRate(rate, 0.92, 0.96, 22, 12);
+  } else {
+    topPercent = lerpRate(Math.min(rate, 1), 0.96, 1, 12, 5);
+  }
+
+  const roundedTopPercent = Math.round(Math.max(5, Math.min(90, topPercent)));
+
+  return {
+    text: `前${roundedTopPercent}%`,
+    hint: resolveRankingHint(roundedTopPercent),
+    topPercent: roundedTopPercent,
+  };
 }
