@@ -24,6 +24,7 @@ import {
   createGroup,
   syncGroupThirdParty,
   bindBidVersionThirdPartySubmission,
+  fetchBidVersion,
   createProject,
   deleteBidVersion,
   deleteCompany,
@@ -132,6 +133,7 @@ export default function ProjectListPage() {
   const [jsonUploadTarget, setJsonUploadTarget] = useState<BidVersionListItem | null>(null);
   const [jsonUploadText, setJsonUploadText] = useState("");
   const [jsonUploadSubmitting, setJsonUploadSubmitting] = useState(false);
+  const [analyzingVersionIds, setAnalyzingVersionIds] = useState<Set<number>>(() => new Set());
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -474,6 +476,101 @@ export default function ProjectListPage() {
 
   const handlePreviewVersion = async (record: BidVersionListItem) => {
     await previewBidVersion({ attachmentId: record.id, filename: record.original_name });
+  };
+
+  const patchVersion = (attachmentId: number, fields: Partial<BidVersionListItem>) => {
+    setItems((prev) =>
+      prev.map((group) => ({
+        ...group,
+        children: group.children.map((project) => ({
+          ...project,
+          children: project.children.map((company) => ({
+            ...company,
+            children: company.children.map((version) =>
+              version.id === attachmentId ? { ...version, ...fields } : version,
+            ),
+          })),
+        })),
+      })),
+    );
+  };
+
+  const handleAnalyzeVersion = async (
+    record: BidVersionListItem,
+    context: { groupId: number; companyName: string },
+  ) => {
+    if (analyzingVersionIds.has(record.id)) return;
+
+    if (!isWangjunLoginEnabled()) {
+      message.warning("未启用三方分析");
+      return;
+    }
+    if (!getWangjunAccessToken()) {
+      message.error("未获取三方 token，请刷新页面后重试");
+      return;
+    }
+
+    const group = items.find((item) => item.db_id === context.groupId);
+    const thirdPartyProjectId = group?.project_id || group?.project_code;
+    if (!thirdPartyProjectId) {
+      message.error("项目组未绑定三方项目 ID");
+      return;
+    }
+
+    setAnalyzingVersionIds((prev) => new Set(prev).add(record.id));
+    patchVersion(record.id, { report_status: "analyzing" });
+
+    try {
+      const responseFile = await fetchBidVersion({
+        attachmentId: record.id,
+        filename: record.original_name,
+      });
+      const thirdParty = await analyzeThirdPartySubmissionFile({
+        projectId: String(thirdPartyProjectId),
+        projectCode: group?.project_code,
+        companyName: context.companyName,
+        responseFile,
+        thirdPartyFileName: record.third_party_file_name || record.original_name,
+        thirdPartyCompanyName: context.companyName,
+      });
+      const submissionFileId = thirdParty.submission_file?.id?.trim();
+      if (!submissionFileId) {
+        throw new Error("三方响应缺少 submission_file.id");
+      }
+      const next = await bindBidVersionThirdPartySubmission({
+        attachmentId: record.id,
+        submissionFileId,
+        status: thirdParty.status,
+        report: thirdParty.report,
+        reportData: thirdParty.report_data,
+      });
+      patchVersionReport(record.id, {
+        report_original_name: next.report_original_name ?? null,
+        report_size_bytes: next.report_size_bytes ?? null,
+        report_uploaded_at: next.report_uploaded_at ?? null,
+        report_has_data: next.report_has_data ?? false,
+        report_title: next.report_title ?? null,
+        report_final_score: next.report_final_score ?? null,
+        report_rating: next.report_rating ?? null,
+        analysis_status: next.analysis_status ?? true,
+        report_status: next.report_status ?? "analyzing",
+        third_party_submission_file_id:
+          next.third_party_submission_file_id ?? record.third_party_submission_file_id,
+      });
+      message.success(
+        next.report_status === "completed" ? "分析完成" : "已提交分析，请稍后刷新查看结果",
+      );
+      await loadList();
+    } catch (error) {
+      patchVersion(record.id, { report_status: "failed" });
+      message.error(error instanceof Error ? error.message : "分析提交失败");
+    } finally {
+      setAnalyzingVersionIds((prev) => {
+        const nextIds = new Set(prev);
+        nextIds.delete(record.id);
+        return nextIds;
+      });
+    }
   };
 
   const patchVersionAnalysisStatus = (attachmentId: number, analysisStatus: boolean) => {
@@ -844,6 +941,8 @@ export default function ProjectListPage() {
               onThirdPartySyncStatusChange={handleThirdPartySyncStatusChange}
               onDeleteVersion={handleDeleteBidVersion}
               onJsonUpload={openJsonUpload}
+              onAnalyzeVersion={handleAnalyzeVersion}
+              analyzingVersionIds={analyzingVersionIds}
               onRefresh={loadList}
             />
             {paginationNode}

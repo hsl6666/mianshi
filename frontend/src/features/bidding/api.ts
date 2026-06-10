@@ -17,7 +17,12 @@ import type {
   TechnicalReviewReportRawOut,
   ThirdPartySyncStatus,
 } from "./types";
-import { downloadBidVersionFile, getBidVersionPreviewUrl, previewBidVersion } from "./utils/filePreview";
+import {
+  downloadBidVersionFile,
+  fetchBidVersionFile,
+  getBidVersionPreviewUrl,
+  previewBidVersion,
+} from "./utils/filePreview";
 import type { IssueFeedback } from "./utils/technicalReportPage2Adapter";
 
 const F = THIRD_PARTY_BIDDING_FIELDS;
@@ -383,6 +388,10 @@ export async function downloadProjectAttachment(args: {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 5000);
+}
+
+export async function fetchBidVersion(args: { attachmentId: number; filename: string }) {
+  return fetchBidVersionFile(args);
 }
 
 export async function downloadBidVersion(args: { attachmentId: number; filename: string }) {

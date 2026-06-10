@@ -41,14 +41,24 @@ export async function previewBidVersion(args: { attachmentId: number; filename: 
   }
 }
 
-export async function downloadBidVersionFile(args: { attachmentId: number; filename: string }) {
-  const { attachmentId, filename } = args;
-  const url = `/api/bid-versions/${attachmentId}/download`;
-
-  const response = await apiClient.get<Blob>(url, { responseType: "blob" });
+async function fetchBidVersionBlob(attachmentId: number) {
+  const response = await apiClient.get<Blob>(`/api/bid-versions/${attachmentId}/download`, {
+    responseType: "blob",
+  });
   const blob = response.data;
   const contentType = blob?.type || "application/octet-stream";
-  const finalBlob = blob instanceof Blob ? new Blob([blob], { type: contentType }) : blob;
+  return blob instanceof Blob ? new Blob([blob], { type: contentType }) : blob;
+}
+
+export async function fetchBidVersionFile(args: { attachmentId: number; filename: string }): Promise<File> {
+  const { attachmentId, filename } = args;
+  const blob = await fetchBidVersionBlob(attachmentId);
+  return new File([blob], filename, { type: blob.type || "application/octet-stream" });
+}
+
+export async function downloadBidVersionFile(args: { attachmentId: number; filename: string }) {
+  const { attachmentId, filename } = args;
+  const finalBlob = await fetchBidVersionBlob(attachmentId);
 
   const objectUrl = URL.createObjectURL(finalBlob);
   const link = document.createElement("a");

@@ -90,6 +90,11 @@ interface ProjectHierarchyPanelProps {
   ) => void;
   onDeleteVersion: (versionId: number) => void;
   onJsonUpload: (record: BidVersionListItem) => void;
+  onAnalyzeVersion: (
+    record: BidVersionListItem,
+    context: { groupId: number; companyName: string },
+  ) => void;
+  analyzingVersionIds: Set<number>;
   onRefresh: () => void;
 }
 
@@ -142,6 +147,8 @@ export default function ProjectHierarchyPanel({
   onThirdPartySyncStatusChange,
   onDeleteVersion,
   onJsonUpload,
+  onAnalyzeVersion,
+  analyzingVersionIds,
   onRefresh,
 }: ProjectHierarchyPanelProps) {
   const navigate = useNavigate();
@@ -374,7 +381,7 @@ export default function ProjectHierarchyPanel({
     {
       title: "操作",
       key: "actions",
-      width: 360,
+      width: 400,
       render: (_: unknown, record: BidVersionListItem) => {
         const nextSyncStatus: ThirdPartySyncStatus =
           record.third_party_sync_status === "synced" ? "unsynced" : "synced";
@@ -397,6 +404,23 @@ export default function ProjectHierarchyPanel({
                 onClick={() => onThirdPartySyncStatusChange(record, nextSyncStatus)}
               >
                 {nextSyncStatus === "synced" ? "标为已同步" : "标为未同步"}
+              </Button>
+            )}
+            {access.canCreate && (
+              <Button
+                type="link"
+                size="small"
+                loading={analyzingVersionIds.has(record.id)}
+                disabled={record.report_status === "analyzing"}
+                onClick={() => {
+                  if (!selectedCompany) return;
+                  onAnalyzeVersion(record, {
+                    groupId: selectedCompany.groupId,
+                    companyName: selectedCompany.company.name,
+                  });
+                }}
+              >
+                分析
               </Button>
             )}
             {!hasVersionReport(record) && access.canReportUpload && (
@@ -532,6 +556,7 @@ export default function ProjectHierarchyPanel({
                         {projectExpanded &&
                           projectItem.companies.map((company) => {
                             const isActive = selectedCompany?.company.id === company.id;
+                            const incompleteCount = countVersionReportStats(company.children).incomplete;
                             return (
                               <button
                                 key={company.id}
@@ -549,7 +574,9 @@ export default function ProjectHierarchyPanel({
                                 <EllipsisTooltip title={company.name}>
                                   <span className="flex-1">{company.name}</span>
                                 </EllipsisTooltip>
-                                <Badge count={company.version_count} color={isActive ? "blue" : "default"} />
+                                {incompleteCount > 0 && (
+                                  <Badge count={incompleteCount} color="red" />
+                                )}
                               </button>
                             );
                           })}
@@ -623,7 +650,7 @@ export default function ProjectHierarchyPanel({
               columns={versionColumns}
               dataSource={selectedCompany.company.children}
               locale={{ emptyText: "暂无投标文件版本" }}
-              scroll={{ x: isSuperAdmin ? 1408 : 1320 }}
+              scroll={{ x: isSuperAdmin ? 1448 : 1360 }}
             />
           </div>
         )}
