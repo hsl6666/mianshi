@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import enum
 import json
+import re
 from datetime import datetime
 from typing import List, Optional
 
@@ -223,6 +224,23 @@ class ProjectAttachment(Base):
         return None
 
     @property
+    def report_project_amount(self) -> float | None:
+        data = self._report_data_dict()
+        project_intro = data.get("project_intro")
+        if isinstance(project_intro, dict):
+            amount = _parse_report_amount_value(project_intro.get("project_amount"))
+            if amount is not None:
+                return amount
+
+        project_info = data.get("project_info")
+        if isinstance(project_info, dict):
+            for key in ("project_amount", "contract_estimate"):
+                amount = _parse_report_amount_value(project_info.get(key))
+                if amount is not None:
+                    return amount
+        return None
+
+    @property
     def report_rating(self) -> str | None:
         data = self._report_data_dict()
         summary = data.get("score_summary")
@@ -246,6 +264,24 @@ class ProjectAttachment(Base):
         except json.JSONDecodeError:
             return {}
         return value if isinstance(value, dict) else {}
+
+
+def _parse_report_amount_value(value: object) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        match = re.search(r"[\d]+(?:\.\d+)?", stripped.replace(",", ""))
+        if match:
+            try:
+                return float(match.group(0))
+            except ValueError:
+                return None
+    return None
 
 
 class BiddingCompany(Base):

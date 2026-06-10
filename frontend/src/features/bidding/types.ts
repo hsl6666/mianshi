@@ -25,6 +25,7 @@ export interface ProjectAttachment {
   report_has_data?: boolean;
   report_title?: string | null;
   report_final_score?: number | null;
+  report_project_amount?: number | null;
   report_rating?: string | null;
   report_feedback?: string | null;
   created_at: string;
@@ -88,6 +89,7 @@ export interface BidVersionListItem {
   report_has_data: boolean;
   report_title: string | null;
   report_final_score: number | null;
+  report_project_amount: number | null;
   report_rating: string | null;
   report_feedback: string | null;
   created_at: string;

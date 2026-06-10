@@ -222,6 +222,7 @@ function ProjectIntroPanel({ projectInfo }: { projectInfo: ProjectInfoView }) {
   const rows = [
     ["项目名称", projectInfo.title],
     ["招标编号/项目编号", projectInfo.projectNo],
+    ["项目金额", projectInfo.projectAmount || "需补充"],
     ["建设内容", projectInfo.content],
     ["工期/质量", projectInfo.schedule],
     ["技术标评分概况", projectInfo.scoring],

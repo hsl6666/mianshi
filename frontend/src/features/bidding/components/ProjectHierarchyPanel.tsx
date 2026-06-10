@@ -37,6 +37,7 @@ import {
   ACCEPTED_FILE_TYPES,
   countVersionReportStats,
   formatVersionReportScore,
+  resolveCompanyProjectAmount,
   PROJECT_STATUS_MAP,
   REPORT_STATUS_MAP,
   resolveReportStatus,
@@ -164,6 +165,11 @@ export default function ProjectHierarchyPanel({
     );
     return countVersionReportStats(versions);
   }, [groups]);
+
+  const selectedProjectAmount = useMemo(
+    () => (selectedCompany ? resolveCompanyProjectAmount(selectedCompany.company.children) : ""),
+    [selectedCompany],
+  );
 
   useEffect(() => {
     if (dateTree.length === 0) {
@@ -601,10 +607,16 @@ export default function ProjectHierarchyPanel({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <Typography.Title level={5} className="!mb-1">
-                  {selectedCompany.company.name}
+                  {selectedCompany.project.name}
+                  {selectedProjectAmount ? (
+                    <>
+                      <span className="mx-2 font-normal text-slate-300">|</span>
+                      <span className="font-semibold text-[#0d7a6f]">{selectedProjectAmount}</span>
+                    </>
+                  ) : null}
                 </Typography.Title>
                 <Typography.Text type="secondary">
-                  {selectedCompany.project.name} · {selectedCompany.company.version_count} 个投标文件版本
+                  {selectedCompany.company.name} · {selectedCompany.company.version_count} 个投标文件版本
                 </Typography.Text>
               </div>
               <Space wrap>

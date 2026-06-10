@@ -33,6 +33,7 @@ def attachment_to_out(attachment: GroupAttachment | ProjectAttachment) -> Attach
         report_has_data=getattr(attachment, "report_has_data", False),
         report_title=getattr(attachment, "report_title", None),
         report_final_score=getattr(attachment, "report_final_score", None),
+        report_project_amount=getattr(attachment, "report_project_amount", None),
         report_rating=getattr(attachment, "report_rating", None),
         report_feedback=getattr(attachment, "report_feedback", None),
         created_at=attachment.created_at,

@@ -38,6 +38,7 @@ export interface ProjectInfoView {
   title: string;
   reportTitle: string;
   projectNo: string;
+  projectAmount: string;
   renderDate: string;
   userName: string;
   userOrg: string;
@@ -67,6 +68,7 @@ const defaultProjectInfo: ProjectInfoView = {
   title: "长丰县庄墓镇徐岗村农产品仓储中心项目",
   reportTitle: "技术标评审修稿报告",
   projectNo: "2026ACCGZ50056",
+  projectAmount: "",
   renderDate: "2026-05-27",
   userName: "需补充",
   userOrg: "需补充",
@@ -388,6 +390,31 @@ function splitReportTitle(fullTitle: string, projectName: string): { title: stri
   };
 }
 
+export function formatProjectAmount(value: unknown): string {
+  if (value == null || value === "") return "";
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    if (/[元万亿]/.test(trimmed)) return trimmed;
+    const parsed = Number(trimmed.replace(/,/g, ""));
+    if (!Number.isFinite(parsed)) return trimmed;
+    return formatProjectAmount(parsed);
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (value >= 10000) {
+      const wan = value / 10000;
+      const formatted = Number.isInteger(wan) ? String(wan) : wan.toFixed(2).replace(/(\.\d)0$/, "$1");
+      return `${formatted}万元`;
+    }
+    const formatted = Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/(\.\d)0$/, "$1");
+    return `${formatted}元`;
+  }
+
+  return "";
+}
+
 function mapProjectInfo(
   report: Record<string, unknown>,
   context?: Record<string, unknown> | null,
@@ -425,6 +452,12 @@ function mapProjectInfo(
       projectIntro?.tender_project_no ?? projectInfoLegacy?.project_no,
       defaultProjectInfo.projectNo,
     ),
+    projectAmount:
+      formatProjectAmount(
+        projectIntro?.project_amount ??
+          projectInfoLegacy?.project_amount ??
+          projectInfoLegacy?.contract_estimate,
+      ) || defaultProjectInfo.projectAmount,
     renderDate: asString(personalization?.rendered_date, defaultProjectInfo.renderDate),
     userName,
     userOrg,

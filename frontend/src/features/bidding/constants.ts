@@ -1,5 +1,6 @@
 import type { AttachmentType, ProjectStatus, ReportStatus, ThirdPartySyncStatus } from "./types";
 import type { BidVersionListItem } from "./types";
+import { formatProjectAmount } from "./utils/technicalReportPage2Adapter";
 
 export const PROJECT_STATUS_MAP: Record<
   ProjectStatus,
@@ -54,6 +55,18 @@ export function formatVersionReportScore(
 export interface VersionReportStats {
   total: number;
   incomplete: number;
+}
+
+export function resolveCompanyProjectAmount(
+  versions: Pick<BidVersionListItem, "version_number" | "report_has_data" | "report_project_amount">[],
+): string {
+  const firstWithReport = [...versions]
+    .sort((a, b) => a.version_number - b.version_number)
+    .find((version) => version.report_has_data);
+  if (!firstWithReport || firstWithReport.report_project_amount == null) {
+    return "";
+  }
+  return formatProjectAmount(firstWithReport.report_project_amount);
 }
 
 export function countVersionReportStats(

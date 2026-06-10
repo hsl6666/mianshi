@@ -23,6 +23,7 @@ class AttachmentOut(BaseModel):
     report_has_data: bool = False
     report_title: Optional[str] = None
     report_final_score: Optional[float] = None
+    report_project_amount: Optional[float] = None
     report_rating: Optional[str] = None
     report_feedback: Optional[str] = None
     created_at: datetime
@@ -193,6 +194,7 @@ class BidVersionListItem(BaseModel):
     report_has_data: bool = False
     report_title: Optional[str] = None
     report_final_score: Optional[float] = None
+    report_project_amount: Optional[float] = None
     report_rating: Optional[str] = None
     report_feedback: Optional[str] = None
     created_at: datetime
