@@ -1,25 +1,84 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Button, Card, Input, Spin, Table, Tag, Tooltip, Typography, message } from "antd";
+import { Button, Card, Input, Modal, Spin, Table, Tag, Tooltip, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { CheckCircleOutlined, DislikeOutlined, DownloadOutlined, ExclamationCircleOutlined, LikeOutlined } from "@ant-design/icons";
 import { useSearchParams } from "react-router-dom";
 import { ReactEcharts } from "@/components/ReactEcharts";
+import { useResponsiveOverlay } from "@/hooks/useResponsiveOverlay";
 import {
-  fetchBidVersionReportDataRaw,
-  updateBidVersionIssueFeedback,
-  updateBidVersionReportFeedback,
+  fetchPublicBidVersionReportDataRaw,
+  updatePublicBidVersionIssueFeedback,
+  updatePublicBidVersionReportFeedback,
 } from "../api";
+import {
+  fetchPublicReportFeedbackTags,
+  groupReportFeedbackTags,
+} from "@/api/reportFeedback";
 import {
   buildTechnicalReportPage2ViewModel,
   defaultTechnicalReportPage2ViewModel,
   type DimensionRow,
   type IssueFeedback,
+  type IssueRow,
   type Priority,
   type ProjectInfoView,
   type TechnicalReportPage2ViewModel,
 } from "../utils/technicalReportPage2Adapter";
+import {
+  mergeUrlContextIntoViewModel,
+  parseTechnicalReport2UrlContext,
+} from "../utils/technicalReport2Url";
 
 const optimizationIconColors = ["#4ade80", "#4ade80", "#14b8a6", "#64748b", "#64748b"];
+
+const ISSUE_FEEDBACK_PLACEHOLDERS: Record<IssueFeedback, string> = {
+  like: "请说明好在哪里，例如：定位准确、建议可执行、判断逻辑清晰…",
+  dislike: "请说明不足的地方在哪里，例如：定位不清、建议过于笼统、与实际情况不符…",
+};
+
+const DEFAULT_ISSUE_FEEDBACK_TAGS: Record<IssueFeedback, string[]> = {
+  like: ["定位准确", "建议可执行", "判断逻辑清晰", "贴合项目实际", "表述专业"],
+  dislike: ["定位不清", "建议过于笼统", "与实际情况不符", "缺少依据来源", "判断逻辑有偏差"],
+};
+
+interface IssueFeedbackDraft {
+  issueId: string;
+  feedback: IssueFeedback;
+  selectedTags: string[];
+  comment: string;
+}
+
+function buildFeedbackComment(selectedTags: string[], comment: string) {
+  return [...selectedTags, comment.trim()].filter(Boolean).join("；");
+}
+
+function splitFeedbackComment(
+  feedback: IssueFeedback,
+  raw: string,
+  tagOptions: Record<IssueFeedback, string[]>,
+) {
+  const knownTags = tagOptions[feedback];
+  const parts = raw.split(/[；，,]/).map((part) => part.trim()).filter(Boolean);
+  const selectedTags: string[] = [];
+  const freeTextParts: string[] = [];
+
+  parts.forEach((part) => {
+    if (knownTags.includes(part) && !selectedTags.includes(part)) {
+      selectedTags.push(part);
+      return;
+    }
+    freeTextParts.push(part);
+  });
+
+  return {
+    selectedTags,
+    comment: freeTextParts.join("；"),
+  };
+}
+
+function getFeedbackDraftLength(draft: IssueFeedbackDraft) {
+  return buildFeedbackComment(draft.selectedTags, draft.comment).length;
+}
 
 const defaultIssuePrioritySummaries = {
   A: "页眉页脚旧项目名、光伏系统施工方案属于首屏可信度和项目针对性的硬伤。",
@@ -108,7 +167,7 @@ const reportKeywords = [
 function ReportHeaderPanel({ projectInfo }: { projectInfo: ProjectInfoView }) {
   const metaItems = [
     ["用户名称", projectInfo.userName || "需补充"],
-    ["用户单位", projectInfo.userOrg || "需补充"],
+    ["参加单位", projectInfo.userOrg || "需补充"],
     ["渲染日期", projectInfo.renderDate || "需补充"],
   ] as const;
 
@@ -186,10 +245,14 @@ function ProjectIntroPanel({ projectInfo }: { projectInfo: ProjectInfoView }) {
 
 export default function TechnicalReportPage2() {
   const [searchParams] = useSearchParams();
+  const { modalProps } = useResponsiveOverlay();
   const reportRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savingIssueFeedbackIds, setSavingIssueFeedbackIds] = useState<Set<string>>(() => new Set());
+  const [issueFeedbackDraft, setIssueFeedbackDraft] = useState<IssueFeedbackDraft | null>(null);
+  const [issueFeedbackTags, setIssueFeedbackTags] =
+    useState<Record<IssueFeedback, string[]>>(DEFAULT_ISSUE_FEEDBACK_TAGS);
   const [feedbackSuggestion, setFeedbackSuggestion] = useState("");
   const [savedFeedbackSuggestion, setSavedFeedbackSuggestion] = useState("");
   const [savingReportFeedback, setSavingReportFeedback] = useState(false);
@@ -198,7 +261,12 @@ export default function TechnicalReportPage2() {
   );
 
   const versionId = Number(searchParams.get("version_id"));
-  const { projectInfo, dimensions, issues, optimizations } = viewModel;
+  const urlContext = useMemo(() => parseTechnicalReport2UrlContext(searchParams), [searchParams]);
+  const displayViewModel = useMemo(
+    () => mergeUrlContextIntoViewModel(viewModel, urlContext),
+    [viewModel, urlContext],
+  );
+  const { projectInfo, dimensions, issues, optimizations } = displayViewModel;
 
   useEffect(() => {
     if (!Number.isFinite(versionId) || versionId <= 0) {
@@ -210,7 +278,7 @@ export default function TechnicalReportPage2() {
 
     let ignore = false;
     setLoading(true);
-    fetchBidVersionReportDataRaw(versionId)
+    fetchPublicBidVersionReportDataRaw(versionId)
       .then((response) => {
         if (!ignore) {
           const nextViewModel = buildTechnicalReportPage2ViewModel(response);
@@ -236,6 +304,18 @@ export default function TechnicalReportPage2() {
       ignore = true;
     };
   }, [versionId]);
+
+  useEffect(() => {
+    fetchPublicReportFeedbackTags()
+      .then((tags) => {
+        const grouped = groupReportFeedbackTags(tags);
+        setIssueFeedbackTags({
+          like: grouped.like.length > 0 ? grouped.like : DEFAULT_ISSUE_FEEDBACK_TAGS.like,
+          dislike: grouped.dislike.length > 0 ? grouped.dislike : DEFAULT_ISSUE_FEEDBACK_TAGS.dislike,
+        });
+      })
+      .catch(() => undefined);
+  }, []);
 
   const totalScore = useMemo(
     () => dimensions.reduce((sum, row) => sum + row.score, 0),
@@ -265,6 +345,16 @@ export default function TechnicalReportPage2() {
   };
   const conclusion = viewModel.conclusion ?? defaultConclusion;
   const nextSteps = viewModel.nextSteps ?? defaultNextSteps;
+  const activeIssueFeedback = useMemo(
+    () =>
+      issueFeedbackDraft
+        ? issues.find((issue) => issue.id === issueFeedbackDraft.issueId) ?? null
+        : null,
+    [issueFeedbackDraft, issues],
+  );
+  const isSavingActiveIssueFeedback = issueFeedbackDraft
+    ? savingIssueFeedbackIds.has(issueFeedbackDraft.issueId)
+    : false;
 
   const handleDownloadReport = async () => {
     if (!reportRef.current || downloading) return;
@@ -310,11 +400,62 @@ export default function TechnicalReportPage2() {
     }
   };
 
-  const handleIssueFeedbackChange = async (issueId: string, feedback: IssueFeedback) => {
-    if (!Number.isFinite(versionId) || versionId <= 0 || savingIssueFeedbackIds.has(issueId)) return;
+  const handleIssueFeedbackClick = (issue: IssueRow, feedback: IssueFeedback) => {
+    if (savingIssueFeedbackIds.has(issue.id)) return;
 
-    const previousFeedback = issues.find((issue) => issue.id === issueId)?.feedback;
-    const nextFeedback = previousFeedback === feedback ? undefined : feedback;
+    if (issue.feedback === feedback) {
+      void clearIssueFeedback(issue.id);
+      return;
+    }
+
+    if (issueFeedbackDraft?.issueId === issue.id && issueFeedbackDraft.feedback === feedback) {
+      setIssueFeedbackDraft(null);
+      return;
+    }
+
+    setIssueFeedbackDraft({
+      issueId: issue.id,
+      feedback,
+      ...(issue.feedback === feedback
+        ? splitFeedbackComment(feedback, issue.feedbackComment ?? "", issueFeedbackTags)
+        : { selectedTags: [], comment: "" }),
+    });
+  };
+
+  const toggleIssueFeedbackTag = (tag: string) => {
+    if (isSavingActiveIssueFeedback) return;
+    setIssueFeedbackDraft((current) => {
+      if (!current) return current;
+      const isSelected = current.selectedTags.includes(tag);
+      const selectedTags = isSelected
+        ? current.selectedTags.filter((item) => item !== tag)
+        : [...current.selectedTags, tag];
+      if (!isSelected && getFeedbackDraftLength({ ...current, selectedTags }).length > 2000) {
+        message.warning("反馈内容不能超过2000字");
+        return current;
+      }
+      return { ...current, selectedTags };
+    });
+  };
+
+  const submitIssueFeedback = async () => {
+    if (!issueFeedbackDraft || !Number.isFinite(versionId) || versionId <= 0) return;
+
+    const { issueId, feedback, selectedTags, comment } = issueFeedbackDraft;
+    const trimmedComment = buildFeedbackComment(selectedTags, comment);
+    if (!trimmedComment) {
+      message.warning(feedback === "like" ? "请选择标签或填写好在哪里" : "请选择标签或填写不足的地方");
+      return;
+    }
+    if (trimmedComment.length > 2000) {
+      message.warning("反馈内容不能超过2000字");
+      return;
+    }
+    if (savingIssueFeedbackIds.has(issueId)) return;
+
+    const previousIssue = issues.find((issue) => issue.id === issueId);
+    const previousFeedback = previousIssue?.feedback;
+    const previousComment = previousIssue?.feedbackComment;
 
     setSavingIssueFeedbackIds((current) => new Set(current).add(issueId));
     setViewModel((current) => ({
@@ -323,19 +464,23 @@ export default function TechnicalReportPage2() {
         issue.id === issueId
           ? {
               ...issue,
-              feedback: nextFeedback,
+              feedback,
+              feedbackComment: trimmedComment,
             }
           : issue,
       ),
     }));
 
     try {
-      const response = await updateBidVersionIssueFeedback({
+      const response = await updatePublicBidVersionIssueFeedback({
         attachmentId: versionId,
         issueId,
-        feedback: nextFeedback ?? null,
+        feedback,
+        comment: trimmedComment,
       });
       setViewModel(buildTechnicalReportPage2ViewModel(response));
+      setIssueFeedbackDraft(null);
+      message.success("反馈已保存");
     } catch (error) {
       setViewModel((current) => ({
         ...current,
@@ -344,6 +489,7 @@ export default function TechnicalReportPage2() {
             ? {
                 ...issue,
                 feedback: previousFeedback,
+                feedbackComment: previousComment,
               }
             : issue,
         ),
@@ -358,12 +504,66 @@ export default function TechnicalReportPage2() {
     }
   };
 
+  const clearIssueFeedback = async (issueId: string) => {
+    if (!Number.isFinite(versionId) || versionId <= 0 || savingIssueFeedbackIds.has(issueId)) return;
+
+    const previousIssue = issues.find((issue) => issue.id === issueId);
+    const previousFeedback = previousIssue?.feedback;
+    const previousComment = previousIssue?.feedbackComment;
+
+    setSavingIssueFeedbackIds((current) => new Set(current).add(issueId));
+    setIssueFeedbackDraft(null);
+    setViewModel((current) => ({
+      ...current,
+      issues: current.issues.map((issue) =>
+        issue.id === issueId
+          ? {
+              ...issue,
+              feedback: undefined,
+              feedbackComment: undefined,
+            }
+          : issue,
+      ),
+    }));
+
+    try {
+      const response = await updatePublicBidVersionIssueFeedback({
+        attachmentId: versionId,
+        issueId,
+        feedback: null,
+        comment: null,
+      });
+      setViewModel(buildTechnicalReportPage2ViewModel(response));
+      message.success("反馈已清除");
+    } catch (error) {
+      setViewModel((current) => ({
+        ...current,
+        issues: current.issues.map((issue) =>
+          issue.id === issueId
+            ? {
+                ...issue,
+                feedback: previousFeedback,
+                feedbackComment: previousComment,
+              }
+            : issue,
+        ),
+      }));
+      message.error(error instanceof Error ? error.message : "清除反馈失败，请稍后重试");
+    } finally {
+      setSavingIssueFeedbackIds((current) => {
+        const next = new Set(current);
+        next.delete(issueId);
+        return next;
+      });
+    }
+  };
+
   const handleSaveReportFeedback = async () => {
     if (!Number.isFinite(versionId) || versionId <= 0 || savingReportFeedback) return;
 
     setSavingReportFeedback(true);
     try {
-      const response = await updateBidVersionReportFeedback({
+      const response = await updatePublicBidVersionReportFeedback({
         attachmentId: versionId,
         feedback: feedbackSuggestion,
       });
@@ -671,8 +871,8 @@ export default function TechnicalReportPage2() {
 
   return (
     <div className="min-h-full bg-[#f7fbfa] text-slate-800">
-      {/* <div className="sticky top-0 z-20 border-b border-teal-100/70 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-[1180px] justify-end px-4 py-3">
+      <div className="sticky top-0 z-20 border-b border-teal-100/70 bg-white/90 backdrop-blur">
+        {/* <div className="mx-auto flex max-w-[1180px] justify-end px-4 py-3">
           <Button
             type="primary"
             icon={<DownloadOutlined />}
@@ -681,8 +881,8 @@ export default function TechnicalReportPage2() {
           >
             下载报告
           </Button>
-        </div>
-      </div> */}
+        </div> */}
+      </div>
 
       <div ref={reportRef} className="bg-[#f7fbfa] pb-12">
         <ReportHeaderPanel projectInfo={projectInfo} />
@@ -874,12 +1074,12 @@ export default function TechnicalReportPage2() {
                       </div>
                     </aside>
                   </div>
-                  <div className="mt-4 flex justify-end">
+                  <div className="mt-4 flex flex-col items-end gap-3">
                     <div className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white/80 px-2 py-1 shadow-sm">
                       <span className="px-1 text-xs text-slate-500">问题反馈</span>
-                      <Tooltip title="这个问题有帮助">
+                      <Tooltip title={isLiked ? "再次点击取消反馈" : "这个问题有帮助"}>
                         <Button
-                          aria-label={`点赞问题 ${issue.id}`}
+                          aria-label={`反馈问题 ${issue.id} 有帮助`}
                           aria-pressed={isLiked}
                           icon={<LikeOutlined />}
                           loading={isSavingIssueFeedback}
@@ -887,12 +1087,12 @@ export default function TechnicalReportPage2() {
                           size="small"
                           type={isLiked ? "primary" : "default"}
                           disabled={isSavingIssueFeedback}
-                          onClick={() => handleIssueFeedbackChange(issue.id, "like")}
+                          onClick={() => handleIssueFeedbackClick(issue, "like")}
                         />
                       </Tooltip>
-                      <Tooltip title="这个问题不好">
+                      <Tooltip title={isDisliked ? "再次点击取消反馈" : "这个问题不好"}>
                         <Button
-                          aria-label={`倒点赞问题 ${issue.id}`}
+                          aria-label={`反馈问题 ${issue.id} 不足`}
                           aria-pressed={isDisliked}
                           danger={isDisliked}
                           icon={<DislikeOutlined />}
@@ -901,10 +1101,19 @@ export default function TechnicalReportPage2() {
                           size="small"
                           type={isDisliked ? "primary" : "default"}
                           disabled={isSavingIssueFeedback}
-                          onClick={() => handleIssueFeedbackChange(issue.id, "dislike")}
+                          onClick={() => handleIssueFeedbackClick(issue, "dislike")}
                         />
                       </Tooltip>
                     </div>
+
+                    {issue.feedbackComment && (!issueFeedbackDraft || issueFeedbackDraft.issueId !== issue.id) && (
+                      <div className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                        <span className="font-medium text-slate-700">
+                          {issue.feedback === "like" ? "好在哪里：" : "不足之处："}
+                        </span>
+                        {issue.feedbackComment}
+                      </div>
+                    )}
                   </div>
                 </article>
               );
@@ -1021,6 +1230,130 @@ export default function TechnicalReportPage2() {
           </Spin>
         </main>
       </div>
+
+      <Modal
+        open={Boolean(issueFeedbackDraft)}
+        title={
+          issueFeedbackDraft?.feedback === "like" ? "好在哪里" : "不足的地方在哪里"
+        }
+        centered
+        width={480}
+        destroyOnClose
+        maskClosable={!isSavingActiveIssueFeedback}
+        onCancel={() => {
+          if (!isSavingActiveIssueFeedback) setIssueFeedbackDraft(null);
+        }}
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              disabled={isSavingActiveIssueFeedback}
+              onClick={() => setIssueFeedbackDraft(null)}
+            >
+              取消
+            </Button>
+            {activeIssueFeedback?.feedback && issueFeedbackDraft && (
+              <Button
+                danger
+                loading={isSavingActiveIssueFeedback}
+                onClick={() => void clearIssueFeedback(issueFeedbackDraft.issueId)}
+              >
+                清除反馈
+              </Button>
+            )}
+            <Button
+              type="primary"
+              loading={isSavingActiveIssueFeedback}
+              onClick={() => void submitIssueFeedback()}
+            >
+              提交反馈
+            </Button>
+          </div>
+        }
+        styles={{
+          mask: { backgroundColor: "rgba(15, 23, 42, 0.28)" },
+          content: { borderRadius: 12, overflow: "hidden", boxShadow: "0 16px 48px rgba(15, 23, 42, 0.12)" },
+          header: { paddingBottom: 8 },
+          body: { paddingTop: 8 },
+        }}
+        {...modalProps}
+      >
+        {issueFeedbackDraft && (
+          <div className="space-y-3">
+            {activeIssueFeedback?.title && (
+              <Typography.Paragraph type="secondary" className="!mb-0 text-sm leading-6">
+                问题：{activeIssueFeedback.title}
+              </Typography.Paragraph>
+            )}
+            <div
+              className={`rounded-md border border-[#d9d9d9] bg-white px-3 py-2 transition-all focus-within:border-[#4096ff] focus-within:shadow-[0_0_0_2px_rgba(5,145,255,0.1)] ${
+                isSavingActiveIssueFeedback ? "bg-[#fafafa]" : ""
+              }`}
+            >
+              {issueFeedbackDraft.selectedTags.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {issueFeedbackDraft.selectedTags.map((tag) => (
+                    <Tag
+                      key={tag}
+                      closable={!isSavingActiveIssueFeedback}
+                      className="!m-0"
+                      color={issueFeedbackDraft.feedback === "like" ? "success" : "warning"}
+                      onClose={() => toggleIssueFeedbackTag(tag)}
+                    >
+                      {tag}
+                    </Tag>
+                  ))}
+                </div>
+              )}
+
+              <Input.TextArea
+                value={issueFeedbackDraft.comment}
+                onChange={(event) =>
+                  setIssueFeedbackDraft((current) =>
+                    current ? { ...current, comment: event.target.value } : current,
+                  )
+                }
+                variant="borderless"
+                autoSize={{ minRows: 3, maxRows: 6 }}
+                maxLength={2000}
+                placeholder={
+                  issueFeedbackDraft.selectedTags.length > 0
+                    ? "可继续补充说明（选填）"
+                    : ISSUE_FEEDBACK_PLACEHOLDERS[issueFeedbackDraft.feedback]
+                }
+                disabled={isSavingActiveIssueFeedback}
+                className="!px-0 !py-0"
+              />
+
+              <div className="mt-2 flex flex-wrap gap-1.5 border-t border-slate-100 pt-2">
+                {issueFeedbackTags[issueFeedbackDraft.feedback].map((tag) => {
+                  const selected = issueFeedbackDraft.selectedTags.includes(tag);
+                  return (
+                    <Tag
+                      key={tag}
+                      className={`!m-0 cursor-pointer select-none transition-all ${
+                        selected ? "ring-1 ring-offset-1" : "opacity-80 hover:opacity-100"
+                      }`}
+                      color={
+                        selected
+                          ? issueFeedbackDraft.feedback === "like"
+                            ? "success"
+                            : "warning"
+                          : "default"
+                      }
+                      onClick={() => toggleIssueFeedbackTag(tag)}
+                    >
+                      {tag}
+                    </Tag>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="text-right text-xs text-slate-400">
+              {getFeedbackDraftLength(issueFeedbackDraft)}/2000
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

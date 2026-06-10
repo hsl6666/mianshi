@@ -341,3 +341,43 @@ class CompanyFeedback(Base):
     )
 
     company: Mapped[BiddingCompany] = relationship(back_populates="feedback")
+
+
+class ReportFeedbackTag(Base):
+    __tablename__ = "report_feedback_tags"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    feedback_type: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(64), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=china_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False),
+        default=china_now,
+        onupdate=china_now,
+    )
+
+
+class ReportFeedbackEntry(Base):
+    __tablename__ = "report_feedback_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    attachment_id: Mapped[int] = mapped_column(
+        ForeignKey("project_attachments.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    issue_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
+    feedback_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    tags_json: Mapped[Optional[str]] = mapped_column(Text)
+    comment: Mapped[Optional[str]] = mapped_column(Text)
+    created_by: Mapped[Optional[str]] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=china_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False),
+        default=china_now,
+        onupdate=china_now,
+    )
+
+    attachment: Mapped[ProjectAttachment] = relationship("ProjectAttachment")

@@ -26,9 +26,9 @@ import {
   HistoryOutlined,
   MoreOutlined,
   PlusOutlined,
+  ReloadOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
-import { ROUTE_PATHS } from "@/constants/common";
 import { formatChinaTime } from "@/utils/date";
 import AnalysisStatusSwitch from "./AnalysisStatusSwitch";
 import BidFilePreviewLink from "./BidFilePreviewLink";
@@ -41,6 +41,7 @@ import {
   THIRD_PARTY_SYNC_STATUS_MAP,
 } from "../constants";
 import { buildDateTree, type HierarchyProjectItem } from "../utils/buildDateTree";
+import { buildTechnicalReport2Url } from "../utils/technicalReport2Url";
 import type { BiddingAccess } from "@/constants/permissions";
 import type {
   BidVersionListItem,
@@ -72,7 +73,6 @@ interface ProjectHierarchyPanelProps {
   onPreviewVersion: (record: BidVersionListItem) => void;
   onDownloadVersion: (record: BidVersionListItem) => void;
   onDownloadVersionReport: (record: BidVersionListItem) => void;
-  onOpenVersionReport: (record: BidVersionListItem) => void;
   onUploadVersionReport: (record: BidVersionListItem, file: File) => void;
   onAnalysisStatusChange: (record: BidVersionListItem, analysisStatus: boolean) => void;
   onThirdPartySyncStatusChange: (
@@ -81,6 +81,7 @@ interface ProjectHierarchyPanelProps {
   ) => void;
   onDeleteVersion: (versionId: number) => void;
   onJsonUpload: (record: BidVersionListItem) => void;
+  onRefresh: () => void;
 }
 
 interface SelectedCompany {
@@ -115,12 +116,12 @@ export default function ProjectHierarchyPanel({
   onPreviewVersion,
   onDownloadVersion,
   onDownloadVersionReport,
-  onOpenVersionReport,
   onUploadVersionReport,
   onAnalysisStatusChange,
   onThirdPartySyncStatusChange,
   onDeleteVersion,
   onJsonUpload,
+  onRefresh,
 }: ProjectHierarchyPanelProps) {
   const navigate = useNavigate();
   const dateTree = useMemo(() => buildDateTree(groups), [groups]);
@@ -138,23 +139,33 @@ export default function ProjectHierarchyPanel({
       return;
     }
 
-    const firstDate = dateTree[0];
-    const firstProject = firstDate.projects[0];
-    setExpandedDates([firstDate.dateKey]);
-    if (firstProject) {
-      setExpandedProjects([firstProject.key]);
-      const firstCompany = firstProject.companies[0];
-      if (firstCompany && firstProject.project) {
-        setSelectedCompany({
-          company: firstCompany,
-          project: firstProject.project,
-          groupId: firstProject.dbId,
-        });
-      } else {
-        setSelectedCompany(null);
+    setSelectedCompany((current) => {
+      if (current) {
+        const group = groups.find((item) => item.db_id === current.groupId);
+        const project = group?.children.find((item) => item.id === current.project.id);
+        const company = project?.children.find((item) => item.id === current.company.id);
+        if (group && project && company) {
+          return { company, project, groupId: group.db_id };
+        }
       }
-    }
-  }, [dateTree]);
+
+      const firstDate = dateTree[0];
+      const firstProject = firstDate.projects[0];
+      setExpandedDates([firstDate.dateKey]);
+      if (firstProject) {
+        setExpandedProjects([firstProject.key]);
+        const firstCompany = firstProject.companies[0];
+        if (firstCompany && firstProject.project) {
+          return {
+            company: firstCompany,
+            project: firstProject.project,
+            groupId: firstProject.dbId,
+          };
+        }
+      }
+      return null;
+    });
+  }, [dateTree, groups]);
 
   const toggleDate = (dateKey: string) => {
     setExpandedDates((prev) =>
@@ -344,26 +355,20 @@ export default function ProjectHierarchyPanel({
                 {nextSyncStatus === "synced" ? "标为已同步" : "标为未同步"}
               </Button>
             )}
-            {hasVersionReport(record)
-              ? access.canReportView && (
-                  <Button type="link" size="small" onClick={() => onOpenVersionReport(record)}>
-                    查看报告
-                  </Button>
-                )
-              : access.canReportUpload && (
-                  <Upload
-                    accept={ACCEPTED_FILE_TYPES}
-                    showUploadList={false}
-                    beforeUpload={(file) => {
-                      onUploadVersionReport(record, file);
-                      return false;
-                    }}
-                  >
-                    <Button type="link" size="small">
-                      上传报告
-                    </Button>
-                  </Upload>
-                )}
+            {!hasVersionReport(record) && access.canReportUpload && (
+              <Upload
+                accept={ACCEPTED_FILE_TYPES}
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  onUploadVersionReport(record, file);
+                  return false;
+                }}
+              >
+                <Button type="link" size="small">
+                  上传报告
+                </Button>
+              </Upload>
+            )}
             {record.report_original_name && access.canReportDownload && (
               <Button type="link" size="small" onClick={() => onDownloadVersionReport(record)}>
                 下载报告
@@ -378,9 +383,20 @@ export default function ProjectHierarchyPanel({
               <Button
                 type="link"
                 size="small"
-                onClick={() => navigate(`${ROUTE_PATHS.technicalReport2}?version_id=${record.id}`)}
+                className="!text-emerald-600"
+                onClick={() => {
+                  if (!selectedCompany) return;
+                  const group = groupMap.get(selectedCompany.groupId);
+                  navigate(
+                    buildTechnicalReport2Url({
+                      versionId: record.id,
+                      projectName: group?.project_name ?? selectedCompany.project.name,
+                      companyName: selectedCompany.company.name,
+                    }),
+                  );
+                }}
               >
-                报告页
+                查看报告
               </Button>
             )}
             {access.canDelete && (
@@ -409,7 +425,8 @@ export default function ProjectHierarchyPanel({
   }
 
   return (
-    <div className="flex min-h-[560px] gap-4">
+    <Spin spinning={loading}>
+      <div className="flex min-h-[560px] gap-4">
       <div className="w-[320px] shrink-0 rounded-lg border border-gray-200 bg-gray-50/60">
         <div className="border-b border-gray-200 px-3 py-2 text-sm font-medium text-gray-600">项目导航</div>
         <div className="max-h-[640px] overflow-y-auto p-2">
@@ -514,6 +531,9 @@ export default function ProjectHierarchyPanel({
                 </Typography.Text>
               </div>
               <Space wrap>
+                <Button icon={<ReloadOutlined />} loading={loading} onClick={onRefresh}>
+                  刷新
+                </Button>
                 {access.canCreate && (
                   <Button
                     icon={<HistoryOutlined />}
@@ -558,6 +578,7 @@ export default function ProjectHierarchyPanel({
           </div>
         )}
       </Card>
-    </div>
+      </div>
+    </Spin>
   );
 }

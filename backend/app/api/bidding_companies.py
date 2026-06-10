@@ -389,6 +389,73 @@ def upload_bid_version_report_data(
     return attachment_to_out(attachment)
 
 
+@router.get("/public/bid-versions/{attachment_id}/report-data", response_model=TechnicalReviewReportOut)
+def get_public_bid_version_report_data(
+    attachment_id: int,
+    db: Session = Depends(get_db),
+) -> TechnicalReviewReportOut:
+    attachment = company_service.get_bid_attachment(db, attachment_id)
+    if not attachment:
+        raise HTTPException(status_code=404, detail="投标文件版本不存在")
+    report_data = company_service.get_bid_report_data(attachment)
+    if report_data is None or attachment.report_uploaded_at is None:
+        raise HTTPException(status_code=404, detail="报告数据不存在")
+
+    return company_service.build_technical_review_report_out(db, attachment, report_data)
+
+
+@router.patch("/public/bid-versions/{attachment_id}/report-feedback", response_model=TechnicalReviewReportOut)
+def update_public_bid_version_report_feedback(
+    attachment_id: int,
+    payload: BidVersionReportFeedbackUpdate,
+    db: Session = Depends(get_db),
+) -> TechnicalReviewReportOut:
+    attachment = company_service.get_bid_attachment(db, attachment_id)
+    if not attachment:
+        raise HTTPException(status_code=404, detail="投标文件版本不存在")
+    if attachment.report_uploaded_at is None:
+        raise HTTPException(status_code=404, detail="报告数据不存在")
+
+    report_data = company_service.update_bid_report_feedback(
+        db,
+        attachment,
+        feedback=payload.feedback,
+    )
+    if report_data is None:
+        raise HTTPException(status_code=404, detail="报告数据不存在")
+
+    return company_service.build_technical_review_report_out(db, attachment, report_data)
+
+
+@router.patch(
+    "/public/bid-versions/{attachment_id}/report-data/issues/{issue_id}/feedback",
+    response_model=TechnicalReviewReportOut,
+)
+def update_public_bid_version_report_issue_feedback(
+    attachment_id: int,
+    issue_id: str,
+    payload: BidVersionIssueFeedbackUpdate,
+    db: Session = Depends(get_db),
+) -> TechnicalReviewReportOut:
+    attachment = company_service.get_bid_attachment(db, attachment_id)
+    if not attachment:
+        raise HTTPException(status_code=404, detail="投标文件版本不存在")
+    if attachment.report_uploaded_at is None:
+        raise HTTPException(status_code=404, detail="报告数据不存在")
+
+    report_data = company_service.update_bid_report_issue_feedback(
+        db,
+        attachment,
+        issue_id=issue_id,
+        feedback=payload.feedback,
+        comment=payload.comment,
+    )
+    if report_data is None:
+        raise HTTPException(status_code=404, detail="报告问题不存在")
+
+    return company_service.build_technical_review_report_out(db, attachment, report_data)
+
+
 @router.get("/bid-versions/{attachment_id}/report-data", response_model=TechnicalReviewReportOut, dependencies=[Depends(require_permission("bidding", "report_view"))])
 def get_bid_version_report_data(
     attachment_id: int,
@@ -402,11 +469,7 @@ def get_bid_version_report_data(
     if report_data is None or attachment.report_uploaded_at is None:
         raise HTTPException(status_code=404, detail="报告数据不存在")
 
-    return TechnicalReviewReportOut(
-        attachment_id=attachment.id,
-        report_uploaded_at=attachment.report_uploaded_at,
-        report_data=report_data,
-    )
+    return company_service.build_technical_review_report_out(db, attachment, report_data)
 
 
 @router.patch("/bid-versions/{attachment_id}/report-feedback", response_model=TechnicalReviewReportOut, dependencies=[Depends(require_permission("bidding", "report_view"))])
@@ -430,11 +493,7 @@ def update_bid_version_report_feedback(
     if report_data is None:
         raise HTTPException(status_code=404, detail="报告数据不存在")
 
-    return TechnicalReviewReportOut(
-        attachment_id=attachment.id,
-        report_uploaded_at=attachment.report_uploaded_at,
-        report_data=report_data,
-    )
+    return company_service.build_technical_review_report_out(db, attachment, report_data)
 
 
 @router.patch("/bid-versions/{attachment_id}/report-data/issues/{issue_id}/feedback", response_model=TechnicalReviewReportOut, dependencies=[Depends(require_permission("bidding", "report_view"))])
@@ -456,15 +515,12 @@ def update_bid_version_report_issue_feedback(
         attachment,
         issue_id=issue_id,
         feedback=payload.feedback,
+        comment=payload.comment,
     )
     if report_data is None:
         raise HTTPException(status_code=404, detail="报告问题不存在")
 
-    return TechnicalReviewReportOut(
-        attachment_id=attachment.id,
-        report_uploaded_at=attachment.report_uploaded_at,
-        report_data=report_data,
-    )
+    return company_service.build_technical_review_report_out(db, attachment, report_data)
 
 
 @router.get("/bid-versions/{attachment_id}/report/download", dependencies=[Depends(require_permission("bidding", "report_download"))])

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, bidding_companies, bidding_project_groups, bidding_projects, health, operation_logs, permissions, third_party, users
+from app.api import auth, bidding_companies, bidding_project_groups, bidding_projects, health, operation_logs, permissions, report_feedback, third_party, users
 from app.core.config import get_settings
 from app.db import init_db
 
@@ -25,6 +25,7 @@ app.include_router(operation_logs.router)
 app.include_router(bidding_project_groups.router)
 app.include_router(bidding_projects.router)
 app.include_router(bidding_companies.router)
+app.include_router(report_feedback.router)
 app.include_router(third_party.router)
 
 

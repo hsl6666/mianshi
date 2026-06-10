@@ -23,7 +23,8 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       clearAllTokens();
       clearUsername();
-      if (!window.location.pathname.startsWith(ROUTE_PATHS.login)) {
+      if (!window.location.pathname.startsWith(ROUTE_PATHS.login)
+        && !window.location.pathname.startsWith(ROUTE_PATHS.technicalReport2)) {
         window.location.href = ROUTE_PATHS.login;
       }
     }

@@ -14,15 +14,9 @@ const routes: RouteObject[] = [
   },
   {
     path: ROUTE_PATHS.technicalReport2,
-    lazy: async () => {
-      const { default: Page } = await import("@/features/bidding/components/TechnicalReportPage2");
-      const Component = () => (
-        <ProtectedRoute>
-          <Page />
-        </ProtectedRoute>
-      );
-      return { Component };
-    },
+    lazy: async () => ({
+      Component: (await import("@/features/bidding/components/TechnicalReportPage2")).default,
+    }),
     HydrateFallback: ProgressBar,
     handle: {
       title: "技术标评审修稿报告",
@@ -158,6 +152,22 @@ const routes: RouteObject[] = [
         },
         HydrateFallback: ProgressBar,
         handle: { title: "权限管理" },
+      },
+      {
+        path: ROUTE_PATHS.reportFeedback.slice(1),
+        lazy: async () => {
+          const { default: Page } = await import("@/pages/FeedbackManagement");
+          const Component = () => (
+            <PermissionRoute module="menus" action="report_feedback">
+              <PermissionRoute module="report_feedback" action="view">
+                <Page />
+              </PermissionRoute>
+            </PermissionRoute>
+          );
+          return { Component };
+        },
+        HydrateFallback: ProgressBar,
+        handle: { title: "反馈管理" },
       },
     ],
   },

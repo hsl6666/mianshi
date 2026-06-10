@@ -1,7 +1,7 @@
-export type PermissionModule = "menus" | "bidding" | "users" | "operation_logs";
+export type PermissionModule = "menus" | "bidding" | "users" | "operation_logs" | "report_feedback";
 
 export type PermissionActionMap = {
-  menus: "dashboard" | "recharge_console" | "bidding_projects" | "users" | "operation_logs" | "permissions";
+  menus: "dashboard" | "recharge_console" | "bidding_projects" | "users" | "operation_logs" | "permissions" | "report_feedback";
   bidding:
     | "view"
     | "create"
@@ -19,6 +19,7 @@ export type PermissionActionMap = {
     | "sync";
   users: "view" | "create" | "edit" | "delete";
   operation_logs: "view";
+  report_feedback: "view" | "manage_tags" | "delete";
 };
 
 export type PermissionsMap = {
@@ -30,6 +31,7 @@ export const MODULE_LABELS: Record<PermissionModule, string> = {
   bidding: "招投标项目",
   users: "用户管理",
   operation_logs: "操作日志",
+  report_feedback: "报告反馈",
 };
 
 export const ACTION_LABELS: Record<PermissionModule, Record<string, string>> = {
@@ -40,6 +42,7 @@ export const ACTION_LABELS: Record<PermissionModule, Record<string, string>> = {
     users: "用户管理",
     operation_logs: "操作日志",
     permissions: "权限管理",
+    report_feedback: "反馈管理",
   },
   bidding: {
     view: "查看项目",
@@ -65,6 +68,11 @@ export const ACTION_LABELS: Record<PermissionModule, Record<string, string>> = {
   },
   operation_logs: {
     view: "查看",
+  },
+  report_feedback: {
+    view: "查看反馈",
+    manage_tags: "管理标签",
+    delete: "删除反馈",
   },
 };
 

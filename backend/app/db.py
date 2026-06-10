@@ -1077,6 +1077,40 @@ def _migrate_third_party_submission_file_id_v1() -> None:
         )
 
 
+def _migrate_report_feedback_module_v1() -> None:
+    from app.db import SessionLocal
+    from app.services import report_feedback as feedback_service
+
+    inspector = inspect(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS app_migrations (
+                    name VARCHAR(128) PRIMARY KEY,
+                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        marker = conn.execute(
+            text("SELECT name FROM app_migrations WHERE name = :name"),
+            {"name": "report_feedback_module_v1"},
+        ).fetchone()
+        if marker:
+            return
+        conn.execute(
+            text("INSERT INTO app_migrations (name) VALUES (:name)"),
+            {"name": "report_feedback_module_v1"},
+        )
+
+    db = SessionLocal()
+    try:
+        feedback_service.seed_default_tags(db)
+    finally:
+        db.close()
+
+
 def init_db() -> None:
     from app import models  # noqa: F401
 
@@ -1099,6 +1133,7 @@ def init_db() -> None:
     _migrate_roles_v1()
     _migrate_report_status_v1()
     _migrate_third_party_submission_file_id_v1()
+    _migrate_report_feedback_module_v1()
     _migrate_operation_log_timezone()
     _migrate_attachment_timezone()
     _migrate_bidding_entity_timezone()

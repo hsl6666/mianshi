@@ -9,4 +9,5 @@ export const ROUTE_PATHS = {
   users: "/users",
   operationLogs: "/operation-logs",
   permissions: "/permissions",
+  reportFeedback: "/report-feedback",
 };

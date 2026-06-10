@@ -301,10 +301,18 @@ export interface TechnicalReviewReportOut {
   attachment_id: number;
   report_uploaded_at: string;
   report_data: TechnicalReviewReportData;
+  context?: TechnicalReviewReportContext | null;
+}
+
+export interface TechnicalReviewReportContext {
+  company_name?: string | null;
+  owner_username?: string | null;
+  owner_display_name?: string | null;
 }
 
 export interface TechnicalReviewReportRawOut {
   attachment_id: number;
   report_uploaded_at: string;
   report_data: Record<string, unknown>;
+  context?: TechnicalReviewReportContext | null;
 }

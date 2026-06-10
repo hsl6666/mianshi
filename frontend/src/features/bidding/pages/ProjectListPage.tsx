@@ -31,7 +31,6 @@ import {
 	  deleteProject,
 	  downloadBidVersion,
 	  downloadBidVersionReport,
-	  fetchBidVersionReportData,
 	  downloadGroupAttachment,
   downloadProjectAttachment,
   fetchCompany,
@@ -52,7 +51,6 @@ import ProjectHierarchyPanel from "../components/ProjectHierarchyPanel";
 import ProjectDetailDrawer from "../components/ProjectDetailDrawer";
 import ProjectFormModal from "../components/ProjectFormModal";
 import ProjectMobileCardList from "../components/ProjectMobileCardList";
-import TechnicalReportDrawer from "../components/TechnicalReportDrawer";
 import { PROJECT_STATUS_MAP } from "../constants";
 import type {
   BidVersionListItem,
@@ -66,7 +64,6 @@ import type {
   ProjectFormValues,
   ProjectRevisionPreset,
 	  ProjectStatus,
-	  TechnicalReviewReportOut,
 	  ThirdPartySyncStatus,
 	} from "../types";
 
@@ -126,9 +123,6 @@ export default function ProjectListPage() {
   const [groupFormOpen, setGroupFormOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [reportOpen, setReportOpen] = useState(false);
-  const [reportLoading, setReportLoading] = useState(false);
-  const [activeReport, setActiveReport] = useState<TechnicalReviewReportOut | null>(null);
   const [activeProject, setActiveProject] = useState<BiddingProjectDetail | null>(null);
   const [activeFeedbackTarget, setActiveFeedbackTarget] = useState<FeedbackTarget | null>(null);
   const [editingGroup, setEditingGroup] = useState<{ id: number; name: string } | null>(null);
@@ -450,24 +444,6 @@ export default function ProjectListPage() {
     } catch (error) {
       message.error(error instanceof Error ? error.message : "下载报告失败");
     }
-	  };
-
-	  const handleOpenVersionReport = async (record: BidVersionListItem) => {
-	    if (!record.report_has_data) {
-	      message.warning("暂无报告数据");
-	      return;
-	    }
-	    setReportOpen(true);
-	    setReportLoading(true);
-	    try {
-	      const report = await fetchBidVersionReportData(record.id);
-	      setActiveReport(report);
-	    } catch (error) {
-	      setReportOpen(false);
-	      message.error(error instanceof Error ? error.message : "加载报告失败");
-	    } finally {
-	      setReportLoading(false);
-	    }
 	  };
 
   const handleDownloadGroupTender = async (group: BiddingProjectGroupTreeItem) => {
@@ -797,11 +773,11 @@ export default function ProjectListPage() {
         </div>
         {!isMobile && (
           <Space>
-            {biddingAccess.canReportPage && (
+            {/* {biddingAccess.canReportPage && (
               <Button icon={<FileSearchOutlined />} onClick={() => navigate(ROUTE_PATHS.technicalReport)}>
                 技术报告页
               </Button>
-            )}
+            )} */}
             {biddingAccess.canCreate && (
               <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate()}>
                 新建项目
@@ -833,7 +809,6 @@ export default function ProjectListPage() {
               onPreviewVersion={handlePreviewVersion}
               onDownloadVersion={handleDownloadVersion}
 	              onDownloadVersionReport={handleDownloadVersionReport}
-	              onOpenVersionReport={handleOpenVersionReport}
               onUploadVersionReport={handleUploadVersionReport}
               onAnalysisStatusChange={handleAnalysisStatusChange}
               onThirdPartySyncStatusChange={handleThirdPartySyncStatusChange}
@@ -862,12 +837,12 @@ export default function ProjectListPage() {
               onPreviewVersion={handlePreviewVersion}
               onDownloadVersion={handleDownloadVersion}
               onDownloadVersionReport={handleDownloadVersionReport}
-              onOpenVersionReport={handleOpenVersionReport}
               onUploadVersionReport={handleUploadVersionReport}
               onAnalysisStatusChange={handleAnalysisStatusChange}
               onThirdPartySyncStatusChange={handleThirdPartySyncStatusChange}
               onDeleteVersion={handleDeleteBidVersion}
               onJsonUpload={openJsonUpload}
+              onRefresh={loadList}
             />
             {paginationNode}
           </>
@@ -928,16 +903,6 @@ export default function ProjectListPage() {
           setDetailOpen(false);
           setActiveProject(null);
         }}
-	      />
-
-	      <TechnicalReportDrawer
-	        open={reportOpen}
-	        loading={reportLoading}
-	        report={activeReport}
-	        onClose={() => {
-	          setReportOpen(false);
-	          setActiveReport(null);
-	        }}
 	      />
 
       <Modal

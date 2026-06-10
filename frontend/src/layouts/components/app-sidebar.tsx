@@ -9,6 +9,7 @@ import {
   SafetyOutlined,
   UserOutlined,
   WalletOutlined,
+  CommentOutlined,
 } from "@ant-design/icons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { ROUTE_PATHS } from "@/constants/common";
@@ -66,6 +67,13 @@ export default function AppSidebar() {
         label: "权限管理",
       });
     }
+    if (hasPermission("menus", "report_feedback")) {
+      menu.push({
+        key: ROUTE_PATHS.reportFeedback,
+        icon: <CommentOutlined />,
+        label: "反馈管理",
+      });
+    }
     return menu;
   }, [hasPermission, permissions, isSuperAdmin]);
 
@@ -80,6 +88,7 @@ export default function AppSidebar() {
     if (location.pathname.startsWith(ROUTE_PATHS.users)) return ROUTE_PATHS.users;
     if (location.pathname.startsWith(ROUTE_PATHS.operationLogs)) return ROUTE_PATHS.operationLogs;
     if (location.pathname.startsWith(ROUTE_PATHS.permissions)) return ROUTE_PATHS.permissions;
+    if (location.pathname.startsWith(ROUTE_PATHS.reportFeedback)) return ROUTE_PATHS.reportFeedback;
     return ROUTE_PATHS.biddingProjects;
   }, [location.pathname]);
 

@@ -23,6 +23,7 @@ export interface IssueRow {
   selfCheck: string;
   gain?: string;
   feedback?: IssueFeedback;
+  feedbackComment?: string;
 }
 
 export interface OptimizationRow {
@@ -296,6 +297,14 @@ function asString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
 
+function firstNonEmpty(...values: unknown[]): string {
+  for (const value of values) {
+    const text = asString(value);
+    if (text.trim()) return text;
+  }
+  return "";
+}
+
 function asNumber(value: unknown, fallback = 0): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -372,23 +381,58 @@ function splitReportTitle(fullTitle: string, projectName: string): { title: stri
   };
 }
 
-function mapProjectInfo(report: Record<string, unknown>): ProjectInfoView {
+function mapProjectInfo(
+  report: Record<string, unknown>,
+  context?: Record<string, unknown> | null,
+): ProjectInfoView {
   const projectIntro = asRecord(report.project_intro);
+  const projectInfoLegacy = asRecord(report.project_info);
   const personalization = asRecord(report.personalization);
-  const projectName = asString(projectIntro?.project_name, defaultProjectInfo.title);
-  const fullTitle = asString(report.title, `${projectName}${defaultProjectInfo.reportTitle}`);
+  const projectName = asString(
+    projectIntro?.project_name ?? projectInfoLegacy?.project_name,
+    defaultProjectInfo.title,
+  );
+  const fullTitle = asString(
+    report.title ?? report.report_title,
+    `${projectName}${defaultProjectInfo.reportTitle}`,
+  );
   const { title, reportTitle } = splitReportTitle(fullTitle, projectName);
+
+  const userName =
+    firstNonEmpty(
+      personalization?.user_name,
+      context?.owner_display_name,
+      context?.owner_username,
+    ) || defaultProjectInfo.userName;
+  const userOrg =
+    firstNonEmpty(
+      personalization?.user_unit,
+      context?.company_name,
+      projectInfoLegacy?.bidder_name,
+    ) || defaultProjectInfo.userOrg;
 
   return {
     title,
     reportTitle,
-    projectNo: asString(projectIntro?.tender_project_no, defaultProjectInfo.projectNo),
+    projectNo: asString(
+      projectIntro?.tender_project_no ?? projectInfoLegacy?.project_no,
+      defaultProjectInfo.projectNo,
+    ),
     renderDate: asString(personalization?.rendered_date, defaultProjectInfo.renderDate),
-    userName: asString(personalization?.user_name, defaultProjectInfo.userName),
-    userOrg: asString(personalization?.user_unit, defaultProjectInfo.userOrg),
-    content: asString(projectIntro?.construction_content, defaultProjectInfo.content),
-    schedule: asString(projectIntro?.schedule_quality, defaultProjectInfo.schedule),
-    scoring: asString(projectIntro?.technical_scoring_overview, defaultProjectInfo.scoring),
+    userName,
+    userOrg,
+    content: asString(
+      projectIntro?.construction_content ?? projectInfoLegacy?.construction_scale,
+      defaultProjectInfo.content,
+    ),
+    schedule: asString(
+      projectIntro?.schedule_quality ?? projectInfoLegacy?.duration_quality,
+      defaultProjectInfo.schedule,
+    ),
+    scoring: asString(
+      projectIntro?.technical_scoring_overview ?? projectInfoLegacy?.bid_method,
+      defaultProjectInfo.scoring,
+    ),
   };
 }
 
@@ -419,24 +463,30 @@ function mapIssues(report: Record<string, unknown>): IssueRow[] {
   const rows = Array.isArray(report.issues) ? report.issues : [];
 
   const mapped = rows
-    .map((row): IssueRow | null => {
+    .map((row, index): IssueRow | null => {
       const item = asRecord(row);
       if (!item) return null;
       const feedback = mapIssueFeedback(
         item.feedback ?? item.feedback_status ?? item.feedbackStatus ?? item.user_feedback,
       );
+      const explicitId =
+        asString(item.number) || asString(item.id) || asString(item.issue_id);
+      const title = asString(item.problem_title) || asString(item.title);
+      const feedbackComment =
+        asString(item.feedback_comment) || asString(item.feedbackComment);
 
       return {
-        id: asString(item.number, "00"),
-        priority: mapIssuePriority(item.priority),
+        id: explicitId || String(index + 1).padStart(2, "0"),
+        priority: mapIssuePriority(item.priority ?? item.severity),
         type: mapIssueType(item.revision_type),
-        title: asString(item.problem_title),
+        title,
         location: asString(item.location),
-        problem: asString(item.issue),
-        logic: asString(item.judgement_logic),
-        suggestion: asString(item.fix_advice),
+        problem: asString(item.issue) || asString(item.problem),
+        logic: asString(item.judgement_logic) || asString(item.reason),
+        suggestion: asString(item.fix_advice) || asString(item.suggestion),
         selfCheck: asString(item.self_check),
         ...(feedback ? { feedback } : {}),
+        ...(feedbackComment ? { feedbackComment } : {}),
       };
     })
     .filter((item): item is IssueRow => Boolean(item?.title));
@@ -514,6 +564,7 @@ function mapNextSteps(report: Record<string, unknown>, optimizations: Optimizati
 }
 
 export function parseTechnicalReportPage2Data(raw: unknown): TechnicalReportPage2ViewModel | null {
+  const root = asRecord(raw);
   const report = extractReportRoot(raw);
   if (!report) return null;
 
@@ -524,7 +575,7 @@ export function parseTechnicalReportPage2Data(raw: unknown): TechnicalReportPage
   const summary = asRecord(scoring?.summary);
 
   return {
-    projectInfo: mapProjectInfo(report),
+    projectInfo: mapProjectInfo(report, asRecord(root?.context)),
     dimensions,
     issues,
     optimizations,

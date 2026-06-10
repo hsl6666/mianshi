@@ -7,12 +7,14 @@ import {
   EditOutlined,
   EyeOutlined,
   FileSearchOutlined,
+  FileTextOutlined,
   CalendarOutlined,
   HistoryOutlined,
   PlusOutlined,
   SyncOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
+import { useNavigate } from "react-router-dom";
 import BidFilePreviewLink from "./BidFilePreviewLink";
 import AnalysisStatusSwitch from "./AnalysisStatusSwitch";
 import EllipsisTooltip from "./EllipsisTooltip";
@@ -32,6 +34,7 @@ import type {
   ThirdPartySyncStatus,
 } from "../types";
 import { buildDateTree } from "../utils/buildDateTree";
+import { buildTechnicalReport2Url } from "../utils/technicalReport2Url";
 
 interface ProjectMobileCardListProps {
   loading: boolean;
@@ -54,7 +57,6 @@ interface ProjectMobileCardListProps {
   onPreviewVersion: (record: BidVersionListItem) => void;
   onDownloadVersion: (record: BidVersionListItem) => void;
   onDownloadVersionReport: (record: BidVersionListItem) => void;
-  onOpenVersionReport: (record: BidVersionListItem) => void;
   onUploadVersionReport: (record: BidVersionListItem, file: File) => void;
   onAnalysisStatusChange: (record: BidVersionListItem, analysisStatus: boolean) => void;
   onThirdPartySyncStatusChange: (
@@ -86,13 +88,13 @@ export default function ProjectMobileCardList({
   onPreviewVersion,
   onDownloadVersion,
   onDownloadVersionReport,
-  onOpenVersionReport,
   onUploadVersionReport,
   onAnalysisStatusChange,
   onThirdPartySyncStatusChange,
   access,
   onDeleteVersion,
 }: ProjectMobileCardListProps) {
+  const navigate = useNavigate();
   const dateTree = useMemo(() => buildDateTree(groups), [groups]);
   const [activeKeys, setActiveKeys] = useState<string[]>([]);
 
@@ -291,31 +293,39 @@ export default function ProjectMobileCardList({
                                             />
                                           </Tooltip>
                                         )}
-                                        {hasVersionReport(version)
-                                          ? access.canReportView && (
-                                              <Tooltip title="查看报告">
-                                                <Button
-                                                  type="link"
-                                                  size="small"
-                                                  icon={<FileSearchOutlined />}
-                                                  onClick={() => onOpenVersionReport(version)}
-                                                />
-                                              </Tooltip>
-                                            )
-                                          : access.canReportUpload && (
-                                              <Upload
-                                                accept={ACCEPTED_FILE_TYPES}
-                                                showUploadList={false}
-                                                beforeUpload={(file) => {
-                                                  void onUploadVersionReport(version, file);
-                                                  return false;
-                                                }}
-                                              >
-                                                <Tooltip title="上传报告文件">
-                                                  <Button type="link" size="small" icon={<UploadOutlined />} />
-                                                </Tooltip>
-                                              </Upload>
-                                            )}
+                                        {!hasVersionReport(version) && access.canReportUpload && (
+                                          <Upload
+                                            accept={ACCEPTED_FILE_TYPES}
+                                            showUploadList={false}
+                                            beforeUpload={(file) => {
+                                              void onUploadVersionReport(version, file);
+                                              return false;
+                                            }}
+                                          >
+                                            <Tooltip title="上传报告文件">
+                                              <Button type="link" size="small" icon={<UploadOutlined />} />
+                                            </Tooltip>
+                                          </Upload>
+                                        )}
+                                        {hasVersionReport(version) && access.canReportPage && (
+                                          <Tooltip title="查看报告">
+                                            <Button
+                                              type="link"
+                                              size="small"
+                                              className="!text-emerald-600"
+                                              icon={<FileTextOutlined />}
+                                              onClick={() =>
+                                                navigate(
+                                                  buildTechnicalReport2Url({
+                                                    versionId: version.id,
+                                                    projectName: group.project_name,
+                                                    companyName: company.name,
+                                                  }),
+                                                )
+                                              }
+                                            />
+                                          </Tooltip>
+                                        )}
                                         {version.report_original_name && access.canReportDownload && (
                                           <Tooltip title="下载报告">
                                             <Button

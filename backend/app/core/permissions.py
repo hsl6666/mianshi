@@ -14,6 +14,7 @@ PERMISSION_CATALOG: Dict[str, Dict[str, str]] = {
         "users": "用户管理",
         "operation_logs": "操作日志",
         "permissions": "权限管理",
+        "report_feedback": "反馈管理",
     },
     "bidding": {
         "view": "查看项目",
@@ -40,6 +41,11 @@ PERMISSION_CATALOG: Dict[str, Dict[str, str]] = {
     "operation_logs": {
         "view": "查看",
     },
+    "report_feedback": {
+        "view": "查看反馈",
+        "manage_tags": "管理标签",
+        "delete": "删除反馈",
+    },
 }
 
 MODULE_LABELS: Dict[str, str] = {
@@ -47,6 +53,7 @@ MODULE_LABELS: Dict[str, str] = {
     "bidding": "招投标项目",
     "users": "用户管理",
     "operation_logs": "操作日志",
+    "report_feedback": "报告反馈",
 }
 
 DEFAULT_USER_PERMISSIONS: Dict[str, Dict[str, bool]] = {
@@ -57,6 +64,7 @@ DEFAULT_USER_PERMISSIONS: Dict[str, Dict[str, bool]] = {
         "users": False,
         "operation_logs": False,
         "permissions": False,
+        "report_feedback": False,
     },
     "bidding": {
         "view": True,
@@ -82,6 +90,11 @@ DEFAULT_USER_PERMISSIONS: Dict[str, Dict[str, bool]] = {
     },
     "operation_logs": {
         "view": False,
+    },
+    "report_feedback": {
+        "view": False,
+        "manage_tags": False,
+        "delete": False,
     },
 }
 

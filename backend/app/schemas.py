@@ -97,10 +97,17 @@ class TechnicalReviewReportData(BaseModel):
     disclaimer: Optional[str] = None
 
 
+class TechnicalReviewReportContext(BaseModel):
+    company_name: Optional[str] = None
+    owner_username: Optional[str] = None
+    owner_display_name: Optional[str] = None
+
+
 class TechnicalReviewReportOut(BaseModel):
     attachment_id: int
     report_uploaded_at: datetime
     report_data: Dict[str, Any]
+    context: Optional[TechnicalReviewReportContext] = None
 
 
 class FeedbackOut(BaseModel):
@@ -326,10 +333,62 @@ class BidVersionThirdPartySubmissionBind(BaseModel):
 
 class BidVersionIssueFeedbackUpdate(BaseModel):
     feedback: Optional[Literal["like", "dislike"]] = None
+    comment: Optional[str] = Field(default=None, max_length=2000)
 
 
 class BidVersionReportFeedbackUpdate(BaseModel):
     feedback: str = Field(default="", max_length=2000)
+
+
+class ReportFeedbackTagOut(BaseModel):
+    id: int
+    feedback_type: Literal["like", "dislike"]
+    label: str
+    sort_order: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ReportFeedbackTagCreate(BaseModel):
+    feedback_type: Literal["like", "dislike"]
+    label: str = Field(min_length=1, max_length=64)
+    sort_order: int = 0
+    is_active: bool = True
+
+
+class ReportFeedbackTagUpdate(BaseModel):
+    feedback_type: Optional[Literal["like", "dislike"]] = None
+    label: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    sort_order: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class ReportFeedbackEntryOut(BaseModel):
+    id: int
+    attachment_id: int
+    issue_id: Optional[str] = None
+    feedback_type: str
+    tags: List[str] = Field(default_factory=list)
+    comment: Optional[str] = None
+    created_by: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    project_id: Optional[int] = None
+    project_name: Optional[str] = None
+    company_name: Optional[str] = None
+    version_number: Optional[int] = None
+    group_name: Optional[str] = None
+    report_url: Optional[str] = None
+
+
+class PaginatedReportFeedbackEntries(BaseModel):
+    items: List[ReportFeedbackEntryOut]
+    total: int
+    page: int
+    page_size: int
 
 
 class ProjectThirdPartySyncStatusUpdate(BaseModel):

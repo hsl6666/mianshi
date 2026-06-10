@@ -20,6 +20,8 @@ from app.models import (
 )
 from app.services.third_party_bidding_client import analyze_submission_file
 from app.services.bidding_projects import company_status, sync_project_status
+from app.services.users import get_user_by_username
+from app.schemas import TechnicalReviewReportContext, TechnicalReviewReportOut
 
 
 def sync_project_participating_units(project: BiddingProject) -> None:
@@ -489,6 +491,44 @@ def get_bid_report_data(attachment: ProjectAttachment) -> dict | None:
     return value if isinstance(value, dict) else None
 
 
+def build_technical_review_report_context(
+    db: Session,
+    attachment: ProjectAttachment,
+) -> TechnicalReviewReportContext:
+    company_name = attachment.company.name if attachment.company else None
+    owner_username: str | None = None
+    owner_display_name: str | None = None
+
+    group: BiddingProjectGroup | None = None
+    if attachment.company and attachment.company.project:
+        group = attachment.company.project.group
+
+    if group:
+        owner_username = group.owner
+        user = get_user_by_username(db, group.owner)
+        if user and user.display_name:
+            owner_display_name = user.display_name
+
+    return TechnicalReviewReportContext(
+        company_name=company_name,
+        owner_username=owner_username,
+        owner_display_name=owner_display_name,
+    )
+
+
+def build_technical_review_report_out(
+    db: Session,
+    attachment: ProjectAttachment,
+    report_data: dict,
+) -> TechnicalReviewReportOut:
+    return TechnicalReviewReportOut(
+        attachment_id=attachment.id,
+        report_uploaded_at=attachment.report_uploaded_at,
+        report_data=report_data,
+        context=build_technical_review_report_context(db, attachment),
+    )
+
+
 def _get_report_root(report_data: dict) -> dict:
     nested_report = report_data.get("report")
     return nested_report if isinstance(nested_report, dict) else report_data
@@ -536,7 +576,42 @@ def update_bid_report_feedback(
         attachment.company.updated_at = china_now()
     db.commit()
     db.refresh(attachment)
+    from app.services import report_feedback as report_feedback_service
+
+    report_feedback_service.upsert_report_feedback_entry(db, attachment, comment=normalized_feedback)
     return report_data
+
+
+def _extract_report_issues(report_data: dict) -> list | None:
+    issues = report_data.get("issues")
+    if isinstance(issues, list):
+        return issues
+    nested_report = report_data.get("report")
+    if isinstance(nested_report, dict):
+        nested_issues = nested_report.get("issues")
+        if isinstance(nested_issues, list):
+            return nested_issues
+    return None
+
+
+def _find_report_issue(issues: list, issue_id: str) -> dict | None:
+    normalized_issue_id = issue_id.strip()
+    if not normalized_issue_id:
+        return None
+
+    for issue in issues:
+        if not isinstance(issue, dict):
+            continue
+        candidate = str(issue.get("number") or issue.get("id") or issue.get("issue_id") or "").strip()
+        if candidate and candidate == normalized_issue_id:
+            return issue
+
+    if normalized_issue_id.isdigit():
+        index = int(normalized_issue_id) - 1
+        if 0 <= index < len(issues) and isinstance(issues[index], dict):
+            return issues[index]
+
+    return None
 
 
 def update_bid_report_issue_feedback(
@@ -545,43 +620,55 @@ def update_bid_report_issue_feedback(
     *,
     issue_id: str,
     feedback: str | None,
+    comment: str | None = None,
 ) -> dict | None:
     report_data = get_bid_report_data(attachment)
     if report_data is None:
         return None
 
-    issues = report_data.get("issues")
-    if not isinstance(issues, list):
-        nested_report = report_data.get("report")
-        issues = nested_report.get("issues") if isinstance(nested_report, dict) else None
-
+    issues = _extract_report_issues(report_data)
     if not isinstance(issues, list):
         return None
 
-    normalized_issue_id = issue_id.strip()
-    for issue in issues:
-        if not isinstance(issue, dict):
-            continue
-        candidate = str(issue.get("number") or issue.get("id") or issue.get("issue_id") or "").strip()
-        if candidate != normalized_issue_id:
-            continue
+    issue = _find_report_issue(issues, issue_id)
+    if issue is None:
+        return None
 
-        if feedback is None:
-            issue.pop("feedback", None)
-            issue.pop("feedback_status", None)
-            issue.pop("feedbackStatus", None)
-            issue.pop("user_feedback", None)
+    if feedback is None:
+        issue.pop("feedback", None)
+        issue.pop("feedback_status", None)
+        issue.pop("feedbackStatus", None)
+        issue.pop("user_feedback", None)
+        issue.pop("feedback_comment", None)
+        issue.pop("feedbackComment", None)
+    else:
+        issue["feedback"] = feedback
+        merged_comment = comment.strip() if isinstance(comment, str) else ""
+        if merged_comment:
+            issue["feedback_comment"] = merged_comment
         else:
-            issue["feedback"] = feedback
+            issue.pop("feedback_comment", None)
+            issue.pop("feedbackComment", None)
 
-        attachment.report_data = json.dumps(report_data, ensure_ascii=False, sort_keys=True)
-        if attachment.company:
-            attachment.company.updated_at = china_now()
-        db.commit()
-        db.refresh(attachment)
-        return report_data
+    attachment.report_data = json.dumps(report_data, ensure_ascii=False, sort_keys=True)
+    if attachment.company:
+        attachment.company.updated_at = china_now()
+    db.commit()
+    db.refresh(attachment)
+    from app.services import report_feedback as report_feedback_service
 
-    return None
+    if feedback is None:
+        report_feedback_service.clear_issue_feedback_entry(db, attachment.id, issue_id)
+    else:
+        merged_comment = comment.strip() if isinstance(comment, str) else ""
+        report_feedback_service.upsert_issue_feedback_entry(
+            db,
+            attachment,
+            issue_id=issue_id,
+            feedback_type=feedback,
+            comment=merged_comment,
+        )
+    return report_data
 
 
 def update_company(db: Session, company: BiddingCompany, *, name: str | None = None) -> BiddingCompany:

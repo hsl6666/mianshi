@@ -277,14 +277,48 @@ export async function fetchBidVersionReportDataRaw(
   return data;
 }
 
+export async function fetchPublicBidVersionReportDataRaw(
+  attachmentId: number,
+): Promise<TechnicalReviewReportRawOut> {
+  const { data } = await apiClient.get<TechnicalReviewReportRawOut>(
+    `/api/public/bid-versions/${attachmentId}/report-data`,
+  );
+  return data;
+}
+
+export async function updatePublicBidVersionIssueFeedback(args: {
+  attachmentId: number;
+  issueId: string;
+  feedback: IssueFeedback | null;
+  comment?: string | null;
+}): Promise<TechnicalReviewReportRawOut> {
+  const { data } = await apiClient.patch<TechnicalReviewReportRawOut>(
+    `/api/public/bid-versions/${args.attachmentId}/report-data/issues/${encodeURIComponent(args.issueId)}/feedback`,
+    { feedback: args.feedback, comment: args.comment ?? null },
+  );
+  return data;
+}
+
+export async function updatePublicBidVersionReportFeedback(args: {
+  attachmentId: number;
+  feedback: string;
+}): Promise<TechnicalReviewReportRawOut> {
+  const { data } = await apiClient.patch<TechnicalReviewReportRawOut>(
+    `/api/public/bid-versions/${args.attachmentId}/report-feedback`,
+    { feedback: args.feedback },
+  );
+  return data;
+}
+
 export async function updateBidVersionIssueFeedback(args: {
   attachmentId: number;
   issueId: string;
   feedback: IssueFeedback | null;
+  comment?: string | null;
 }): Promise<TechnicalReviewReportRawOut> {
   const { data } = await apiClient.patch<TechnicalReviewReportRawOut>(
     `/api/bid-versions/${args.attachmentId}/report-data/issues/${encodeURIComponent(args.issueId)}/feedback`,
-    { feedback: args.feedback },
+    { feedback: args.feedback, comment: args.comment ?? null },
   );
   return data;
 }
