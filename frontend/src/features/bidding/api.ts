@@ -18,6 +18,7 @@ import type {
   ThirdPartySyncStatus,
 } from "./types";
 import { downloadBidVersionFile, getBidVersionPreviewUrl, previewBidVersion } from "./utils/filePreview";
+import type { IssueFeedback } from "./utils/technicalReportPage2Adapter";
 
 const F = THIRD_PARTY_BIDDING_FIELDS;
 
@@ -272,6 +273,18 @@ export async function fetchBidVersionReportDataRaw(
 ): Promise<TechnicalReviewReportRawOut> {
   const { data } = await apiClient.get<TechnicalReviewReportRawOut>(
     `/api/bid-versions/${attachmentId}/report-data`,
+  );
+  return data;
+}
+
+export async function updateBidVersionIssueFeedback(args: {
+  attachmentId: number;
+  issueId: string;
+  feedback: IssueFeedback | null;
+}): Promise<TechnicalReviewReportRawOut> {
+  const { data } = await apiClient.patch<TechnicalReviewReportRawOut>(
+    `/api/bid-versions/${args.attachmentId}/report-data/issues/${encodeURIComponent(args.issueId)}/feedback`,
+    { feedback: args.feedback },
   );
   return data;
 }

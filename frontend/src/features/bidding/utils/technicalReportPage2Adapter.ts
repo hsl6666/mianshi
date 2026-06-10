@@ -1,4 +1,5 @@
 export type Priority = "A" | "B" | "C";
+export type IssueFeedback = "like" | "dislike";
 export type IssueType = "删除类" | "修改类" | "增补类";
 
 export interface DimensionRow {
@@ -21,6 +22,7 @@ export interface IssueRow {
   suggestion: string;
   selfCheck: string;
   gain?: string;
+  feedback?: IssueFeedback;
 }
 
 export interface OptimizationRow {
@@ -333,6 +335,13 @@ function mapIssueType(value: unknown): IssueType {
   return "修改类";
 }
 
+function mapIssueFeedback(value: unknown): IssueFeedback | undefined {
+  const text = asString(value).toLowerCase();
+  if (["like", "liked", "good", "positive", "up", "thumbs_up"].includes(text)) return "like";
+  if (["dislike", "disliked", "bad", "negative", "down", "thumbs_down"].includes(text)) return "dislike";
+  return undefined;
+}
+
 function mapOptimizationPriority(index: number, expectedImprovement: string): "高" | "中" {
   if (index < 2 || expectedImprovement.includes("3-") || expectedImprovement.includes("4分")) {
     return "高";
@@ -409,9 +418,12 @@ function mapIssues(report: Record<string, unknown>): IssueRow[] {
   const rows = Array.isArray(report.issues) ? report.issues : [];
 
   const mapped = rows
-    .map((row) => {
+    .map((row): IssueRow | null => {
       const item = asRecord(row);
       if (!item) return null;
+      const feedback = mapIssueFeedback(
+        item.feedback ?? item.feedback_status ?? item.feedbackStatus ?? item.user_feedback,
+      );
 
       return {
         id: asString(item.number, "00"),
@@ -423,6 +435,7 @@ function mapIssues(report: Record<string, unknown>): IssueRow[] {
         logic: asString(item.judgement_logic),
         suggestion: asString(item.fix_advice),
         selfCheck: asString(item.self_check),
+        ...(feedback ? { feedback } : {}),
       };
     })
     .filter((item): item is IssueRow => Boolean(item?.title));

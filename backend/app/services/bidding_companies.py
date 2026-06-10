@@ -486,6 +486,51 @@ def get_bid_report_data(attachment: ProjectAttachment) -> dict | None:
     return value if isinstance(value, dict) else None
 
 
+def update_bid_report_issue_feedback(
+    db: Session,
+    attachment: ProjectAttachment,
+    *,
+    issue_id: str,
+    feedback: str | None,
+) -> dict | None:
+    report_data = get_bid_report_data(attachment)
+    if report_data is None:
+        return None
+
+    issues = report_data.get("issues")
+    if not isinstance(issues, list):
+        nested_report = report_data.get("report")
+        issues = nested_report.get("issues") if isinstance(nested_report, dict) else None
+
+    if not isinstance(issues, list):
+        return None
+
+    normalized_issue_id = issue_id.strip()
+    for issue in issues:
+        if not isinstance(issue, dict):
+            continue
+        candidate = str(issue.get("number") or issue.get("id") or issue.get("issue_id") or "").strip()
+        if candidate != normalized_issue_id:
+            continue
+
+        if feedback is None:
+            issue.pop("feedback", None)
+            issue.pop("feedback_status", None)
+            issue.pop("feedbackStatus", None)
+            issue.pop("user_feedback", None)
+        else:
+            issue["feedback"] = feedback
+
+        attachment.report_data = json.dumps(report_data, ensure_ascii=False, sort_keys=True)
+        if attachment.company:
+            attachment.company.updated_at = china_now()
+        db.commit()
+        db.refresh(attachment)
+        return report_data
+
+    return None
+
+
 def update_company(db: Session, company: BiddingCompany, *, name: str | None = None) -> BiddingCompany:
     if name is not None:
         company.name = name.strip()

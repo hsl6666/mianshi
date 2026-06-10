@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Button, Card, Spin, Table, Tag, Typography, message } from "antd";
+import { Button, Card, Spin, Table, Tag, Tooltip, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { CheckCircleOutlined, DownloadOutlined, ExclamationCircleOutlined } from "@ant-design/icons";
+import { CheckCircleOutlined, DislikeOutlined, DownloadOutlined, ExclamationCircleOutlined, LikeOutlined } from "@ant-design/icons";
 import { useSearchParams } from "react-router-dom";
 import { ReactEcharts } from "@/components/ReactEcharts";
-import { fetchBidVersionReportDataRaw } from "../api";
+import { fetchBidVersionReportDataRaw, updateBidVersionIssueFeedback } from "../api";
 import {
   buildTechnicalReportPage2ViewModel,
   defaultTechnicalReportPage2ViewModel,
   type DimensionRow,
+  type IssueFeedback,
   type Priority,
   type ProjectInfoView,
   type TechnicalReportPage2ViewModel,
@@ -184,6 +185,7 @@ export default function TechnicalReportPage2() {
   const reportRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [savingIssueFeedbackIds, setSavingIssueFeedbackIds] = useState<Set<string>>(() => new Set());
   const [viewModel, setViewModel] = useState<TechnicalReportPage2ViewModel>(
     defaultTechnicalReportPage2ViewModel,
   );
@@ -279,6 +281,54 @@ export default function TechnicalReportPage2() {
       message.error("报告图片生成失败，请稍后重试");
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const handleIssueFeedbackChange = async (issueId: string, feedback: IssueFeedback) => {
+    if (!Number.isFinite(versionId) || versionId <= 0 || savingIssueFeedbackIds.has(issueId)) return;
+
+    const previousFeedback = issues.find((issue) => issue.id === issueId)?.feedback;
+    const nextFeedback = previousFeedback === feedback ? undefined : feedback;
+
+    setSavingIssueFeedbackIds((current) => new Set(current).add(issueId));
+    setViewModel((current) => ({
+      ...current,
+      issues: current.issues.map((issue) =>
+        issue.id === issueId
+          ? {
+              ...issue,
+              feedback: nextFeedback,
+            }
+          : issue,
+      ),
+    }));
+
+    try {
+      const response = await updateBidVersionIssueFeedback({
+        attachmentId: versionId,
+        issueId,
+        feedback: nextFeedback ?? null,
+      });
+      setViewModel(buildTechnicalReportPage2ViewModel(response));
+    } catch (error) {
+      setViewModel((current) => ({
+        ...current,
+        issues: current.issues.map((issue) =>
+          issue.id === issueId
+            ? {
+                ...issue,
+                feedback: previousFeedback,
+              }
+            : issue,
+        ),
+      }));
+      message.error(error instanceof Error ? error.message : "反馈保存失败，请稍后重试");
+    } finally {
+      setSavingIssueFeedbackIds((current) => {
+        const next = new Set(current);
+        next.delete(issueId);
+        return next;
+      });
     }
   };
 
@@ -728,6 +778,9 @@ export default function TechnicalReportPage2() {
           <div className="space-y-4">
             {issues.map((issue) => {
               const meta = priorityMeta[issue.priority];
+              const isLiked = issue.feedback === "like";
+              const isDisliked = issue.feedback === "dislike";
+              const isSavingIssueFeedback = savingIssueFeedbackIds.has(issue.id);
               return (
                 <article key={issue.id} className={`rounded border bg-white p-5 shadow-sm ${meta.className}`}>
                   <div className="grid gap-4 lg:grid-cols-[1fr_220px]">
@@ -772,6 +825,38 @@ export default function TechnicalReportPage2() {
                         <Tag>{issue.type}</Tag>
                       </div>
                     </aside>
+                  </div>
+                  <div className="mt-4 flex justify-end">
+                    <div className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white/80 px-2 py-1 shadow-sm">
+                      <span className="px-1 text-xs text-slate-500">问题反馈</span>
+                      <Tooltip title="这个问题有帮助">
+                        <Button
+                          aria-label={`点赞问题 ${issue.id}`}
+                          aria-pressed={isLiked}
+                          icon={<LikeOutlined />}
+                          loading={isSavingIssueFeedback}
+                          shape="circle"
+                          size="small"
+                          type={isLiked ? "primary" : "default"}
+                          disabled={isSavingIssueFeedback}
+                          onClick={() => handleIssueFeedbackChange(issue.id, "like")}
+                        />
+                      </Tooltip>
+                      <Tooltip title="这个问题不好">
+                        <Button
+                          aria-label={`倒点赞问题 ${issue.id}`}
+                          aria-pressed={isDisliked}
+                          danger={isDisliked}
+                          icon={<DislikeOutlined />}
+                          loading={isSavingIssueFeedback}
+                          shape="circle"
+                          size="small"
+                          type={isDisliked ? "primary" : "default"}
+                          disabled={isSavingIssueFeedback}
+                          onClick={() => handleIssueFeedbackChange(issue.id, "dislike")}
+                        />
+                      </Tooltip>
+                    </div>
                   </div>
                 </article>
               );

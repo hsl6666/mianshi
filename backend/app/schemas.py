@@ -322,6 +322,10 @@ class BidVersionThirdPartySubmissionBind(BaseModel):
     report_data: Optional[Dict[str, Any]] = None
 
 
+class BidVersionIssueFeedbackUpdate(BaseModel):
+    feedback: Optional[Literal["like", "dislike"]] = None
+
+
 class ProjectThirdPartySyncStatusUpdate(BaseModel):
     third_party_sync_status: ThirdPartySyncStatus
 

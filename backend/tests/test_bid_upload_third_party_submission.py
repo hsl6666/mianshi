@@ -107,6 +107,57 @@ class BidUploadThirdPartySubmissionTests(unittest.TestCase):
         self.assertEqual(pushed_version["third_party_submission_file_id"], "submission-file-business-id-001")
         self.assertTrue(pushed_version["report_has_data"])
 
+    def test_issue_feedback_patch_persists_in_report_data(self) -> None:
+        upload_response = self.client.post(
+            "/api/bidding-projects",
+            headers=self._auth_headers(),
+            data={
+                "db_id": str(self.group_id),
+                "name": "Issue Feedback Project",
+                "participating_units": "Issue Feedback Company",
+            },
+            files={
+                "bid_file": (
+                    "feedback-response.docx",
+                    b"bid response bytes",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ),
+            },
+        )
+        self.assertEqual(upload_response.status_code, 201, upload_response.text)
+        version = upload_response.json()["companies"][0]["attachments"][0]
+
+        upload_report_response = self.client.post(
+            f"/api/bid-versions/{version['id']}/report-data",
+            headers=self._auth_headers(),
+            json={
+                "issues": [
+                    {
+                        "number": "01",
+                        "priority": "高",
+                        "revision_type": "修改",
+                        "problem_title": "补充来源说明",
+                    }
+                ]
+            },
+        )
+        self.assertEqual(upload_report_response.status_code, 200, upload_report_response.text)
+
+        feedback_response = self.client.patch(
+            f"/api/bid-versions/{version['id']}/report-data/issues/01/feedback",
+            headers=self._auth_headers(),
+            json={"feedback": "like"},
+        )
+        self.assertEqual(feedback_response.status_code, 200, feedback_response.text)
+        self.assertEqual(feedback_response.json()["report_data"]["issues"][0]["feedback"], "like")
+
+        report_response = self.client.get(
+            f"/api/bid-versions/{version['id']}/report-data",
+            headers=self._auth_headers(),
+        )
+        self.assertEqual(report_response.status_code, 200, report_response.text)
+        self.assertEqual(report_response.json()["report_data"]["issues"][0]["feedback"], "like")
+
     def _auth_headers(self) -> dict[str, str]:
         security = importlib.import_module("app.core.security")
         token = security.create_access_token("cqzsxh", self.models.UserRole.super_admin)
