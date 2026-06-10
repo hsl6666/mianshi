@@ -360,6 +360,12 @@ export default function ProjectMobileCardList({
                                         </Tag>
                                       )}
                                     </div>
+                                    {version.report_feedback && (
+                                      <div className="flex min-w-0 items-center gap-2 pl-5 text-gray-500">
+                                        <span className="shrink-0">反馈建议</span>
+                                        <EllipsisTooltip title={version.report_feedback} />
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               })}

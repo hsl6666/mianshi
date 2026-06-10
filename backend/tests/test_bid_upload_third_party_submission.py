@@ -158,6 +158,60 @@ class BidUploadThirdPartySubmissionTests(unittest.TestCase):
         self.assertEqual(report_response.status_code, 200, report_response.text)
         self.assertEqual(report_response.json()["report_data"]["issues"][0]["feedback"], "like")
 
+    def test_report_feedback_synchronizes_report_data_and_bid_version(self) -> None:
+        upload_response = self.client.post(
+            "/api/bidding-projects",
+            headers=self._auth_headers(),
+            data={
+                "db_id": str(self.group_id),
+                "name": "Report Feedback Project",
+                "participating_units": "Report Feedback Company",
+            },
+            files={
+                "bid_file": (
+                    "response-feedback.docx",
+                    b"bid response bytes",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ),
+            },
+        )
+        self.assertEqual(upload_response.status_code, 201, upload_response.text)
+        version = upload_response.json()["companies"][0]["attachments"][0]
+
+        upload_report_response = self.client.post(
+            f"/api/bid-versions/{version['id']}/report-data",
+            headers=self._auth_headers(),
+            json={"title": "Initial report", "issues": []},
+        )
+        self.assertEqual(upload_report_response.status_code, 200, upload_report_response.text)
+
+        feedback_response = self.client.patch(
+            f"/api/bid-versions/{version['id']}/report-feedback",
+            headers=self._auth_headers(),
+            json={"feedback": "建议增加风险来源说明。"},
+        )
+        self.assertEqual(feedback_response.status_code, 200, feedback_response.text)
+        self.assertEqual(feedback_response.json()["report_data"]["feedback_suggestion"], "建议增加风险来源说明。")
+
+        project_response = self.client.get("/api/bidding-projects", headers=self._auth_headers())
+        self.assertEqual(project_response.status_code, 200, project_response.text)
+        saved_version = project_response.json()["items"][0]["children"][0]["children"][0]["children"][0]
+        self.assertEqual(saved_version["report_feedback"], "建议增加风险来源说明。")
+
+        replacement_response = self.client.post(
+            f"/api/bid-versions/{version['id']}/report-data",
+            headers=self._auth_headers(),
+            json={"title": "Replacement report", "issues": []},
+        )
+        self.assertEqual(replacement_response.status_code, 200, replacement_response.text)
+
+        report_response = self.client.get(
+            f"/api/bid-versions/{version['id']}/report-data",
+            headers=self._auth_headers(),
+        )
+        self.assertEqual(report_response.status_code, 200, report_response.text)
+        self.assertEqual(report_response.json()["report_data"]["feedback_suggestion"], "建议增加风险来源说明。")
+
     def _auth_headers(self) -> dict[str, str]:
         security = importlib.import_module("app.core.security")
         token = security.create_access_token("cqzsxh", self.models.UserRole.super_admin)

@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Button, Card, Spin, Table, Tag, Tooltip, Typography, message } from "antd";
+import { Button, Card, Input, Spin, Table, Tag, Tooltip, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { CheckCircleOutlined, DislikeOutlined, DownloadOutlined, ExclamationCircleOutlined, LikeOutlined } from "@ant-design/icons";
 import { useSearchParams } from "react-router-dom";
 import { ReactEcharts } from "@/components/ReactEcharts";
-import { fetchBidVersionReportDataRaw, updateBidVersionIssueFeedback } from "../api";
+import {
+  fetchBidVersionReportDataRaw,
+  updateBidVersionIssueFeedback,
+  updateBidVersionReportFeedback,
+} from "../api";
 import {
   buildTechnicalReportPage2ViewModel,
   defaultTechnicalReportPage2ViewModel,
@@ -186,6 +190,9 @@ export default function TechnicalReportPage2() {
   const [downloading, setDownloading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savingIssueFeedbackIds, setSavingIssueFeedbackIds] = useState<Set<string>>(() => new Set());
+  const [feedbackSuggestion, setFeedbackSuggestion] = useState("");
+  const [savedFeedbackSuggestion, setSavedFeedbackSuggestion] = useState("");
+  const [savingReportFeedback, setSavingReportFeedback] = useState(false);
   const [viewModel, setViewModel] = useState<TechnicalReportPage2ViewModel>(
     defaultTechnicalReportPage2ViewModel,
   );
@@ -196,6 +203,8 @@ export default function TechnicalReportPage2() {
   useEffect(() => {
     if (!Number.isFinite(versionId) || versionId <= 0) {
       setViewModel(defaultTechnicalReportPage2ViewModel);
+      setFeedbackSuggestion("");
+      setSavedFeedbackSuggestion("");
       return;
     }
 
@@ -204,12 +213,18 @@ export default function TechnicalReportPage2() {
     fetchBidVersionReportDataRaw(versionId)
       .then((response) => {
         if (!ignore) {
-          setViewModel(buildTechnicalReportPage2ViewModel(response));
+          const nextViewModel = buildTechnicalReportPage2ViewModel(response);
+          const nextFeedbackSuggestion = nextViewModel.feedbackSuggestion ?? "";
+          setViewModel(nextViewModel);
+          setFeedbackSuggestion(nextFeedbackSuggestion);
+          setSavedFeedbackSuggestion(nextFeedbackSuggestion);
         }
       })
       .catch((error) => {
         if (!ignore) {
           setViewModel(defaultTechnicalReportPage2ViewModel);
+          setFeedbackSuggestion("");
+          setSavedFeedbackSuggestion("");
           message.error(error instanceof Error ? error.message : "加载报告数据失败");
         }
       })
@@ -329,6 +344,28 @@ export default function TechnicalReportPage2() {
         next.delete(issueId);
         return next;
       });
+    }
+  };
+
+  const handleSaveReportFeedback = async () => {
+    if (!Number.isFinite(versionId) || versionId <= 0 || savingReportFeedback) return;
+
+    setSavingReportFeedback(true);
+    try {
+      const response = await updateBidVersionReportFeedback({
+        attachmentId: versionId,
+        feedback: feedbackSuggestion,
+      });
+      const nextViewModel = buildTechnicalReportPage2ViewModel(response);
+      const nextFeedbackSuggestion = nextViewModel.feedbackSuggestion ?? "";
+      setViewModel(nextViewModel);
+      setFeedbackSuggestion(nextFeedbackSuggestion);
+      setSavedFeedbackSuggestion(nextFeedbackSuggestion);
+      message.success("反馈建议已保存");
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "反馈建议保存失败，请稍后重试");
+    } finally {
+      setSavingReportFeedback(false);
     }
   };
 
@@ -911,7 +948,7 @@ export default function TechnicalReportPage2() {
           </div>
         </section>
 
-        <section>
+        <section className="mb-8">
           <ModuleSectionTitle title="七、评审结论与下一步" subtitle="先处理明显硬伤，再做结构化补强，最后统一口径。" />
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="rounded border border-slate-200 bg-white p-5 shadow-sm">
@@ -944,6 +981,31 @@ export default function TechnicalReportPage2() {
           <p className="mt-6 mb-0 text-center text-xs leading-6 text-slate-400">
             免责声明：本报告由 AI 生成，仅供参考，不构成任何法律或商业建议，最终评审结果以招标方评审为准。
           </p>
+        </section>
+
+        <section>
+          <ModuleSectionTitle title="八、反馈建议" subtitle="欢迎留下对整篇报告的意见和建议，我们会将其用于后续系统升级。" />
+          <div className="rounded border border-slate-200 bg-white p-5 shadow-sm">
+            <Input.TextArea
+              value={feedbackSuggestion}
+              onChange={(event) => setFeedbackSuggestion(event.target.value)}
+              autoSize={{ minRows: 5, maxRows: 10 }}
+              maxLength={2000}
+              showCount
+              placeholder="请输入对本报告的反馈建议"
+              disabled={savingReportFeedback}
+            />
+            <div className="mt-5 flex justify-end">
+              <Button
+                type="primary"
+                loading={savingReportFeedback}
+                disabled={feedbackSuggestion.trim() === savedFeedbackSuggestion}
+                onClick={handleSaveReportFeedback}
+              >
+                保存反馈
+              </Button>
+            </div>
+          </div>
         </section>
           </Spin>
         </main>

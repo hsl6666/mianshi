@@ -24,6 +24,7 @@ class AttachmentOut(BaseModel):
     report_title: Optional[str] = None
     report_final_score: Optional[float] = None
     report_rating: Optional[str] = None
+    report_feedback: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -186,6 +187,7 @@ class BidVersionListItem(BaseModel):
     report_title: Optional[str] = None
     report_final_score: Optional[float] = None
     report_rating: Optional[str] = None
+    report_feedback: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -324,6 +326,10 @@ class BidVersionThirdPartySubmissionBind(BaseModel):
 
 class BidVersionIssueFeedbackUpdate(BaseModel):
     feedback: Optional[Literal["like", "dislike"]] = None
+
+
+class BidVersionReportFeedbackUpdate(BaseModel):
+    feedback: str = Field(default="", max_length=2000)
 
 
 class ProjectThirdPartySyncStatusUpdate(BaseModel):

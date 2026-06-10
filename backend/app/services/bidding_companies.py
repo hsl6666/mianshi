@@ -292,6 +292,7 @@ async def analyze_bid_version(
 
     report_payload = result.report or result.report_data
     if isinstance(report_payload, dict):
+        _synchronize_report_feedback(attachment, report_payload)
         attachment.report_data = json.dumps(report_payload, ensure_ascii=False, sort_keys=True)
         attachment.report_uploaded_at = now
         attachment.report_status = ReportStatus.completed
@@ -366,6 +367,7 @@ def bind_third_party_submission(
     attachment.third_party_submission_file_id = normalized_id
     report_payload = report if isinstance(report, dict) else report_data
     if isinstance(report_payload, dict):
+        _synchronize_report_feedback(attachment, report_payload)
         attachment.report_data = json.dumps(report_payload, ensure_ascii=False, sort_keys=True)
         attachment.report_uploaded_at = now
         attachment.report_status = ReportStatus.completed
@@ -465,6 +467,7 @@ def replace_bid_report_data(
     report_data: dict,
 ) -> ProjectAttachment:
     now = china_now()
+    _synchronize_report_feedback(attachment, report_data)
     attachment.report_data = json.dumps(report_data, ensure_ascii=False, sort_keys=True)
     attachment.report_uploaded_at = now
     attachment.analysis_status = True
@@ -484,6 +487,56 @@ def get_bid_report_data(attachment: ProjectAttachment) -> dict | None:
     except json.JSONDecodeError:
         return None
     return value if isinstance(value, dict) else None
+
+
+def _get_report_root(report_data: dict) -> dict:
+    nested_report = report_data.get("report")
+    return nested_report if isinstance(nested_report, dict) else report_data
+
+
+def _normalize_report_feedback(feedback: object) -> str | None:
+    if not isinstance(feedback, str):
+        return None
+    normalized = feedback.strip()
+    return normalized or None
+
+
+def _write_report_feedback(report_data: dict, feedback: str | None) -> None:
+    report_root = _get_report_root(report_data)
+    if feedback is None:
+        report_root.pop("feedback_suggestion", None)
+    else:
+        report_root["feedback_suggestion"] = feedback
+
+
+def _synchronize_report_feedback(attachment: ProjectAttachment, report_data: dict) -> None:
+    report_root = _get_report_root(report_data)
+    incoming_feedback = _normalize_report_feedback(report_root.get("feedback_suggestion"))
+    saved_feedback = _normalize_report_feedback(attachment.report_feedback)
+    feedback = saved_feedback if saved_feedback is not None else incoming_feedback
+    attachment.report_feedback = feedback
+    _write_report_feedback(report_data, feedback)
+
+
+def update_bid_report_feedback(
+    db: Session,
+    attachment: ProjectAttachment,
+    *,
+    feedback: str,
+) -> dict | None:
+    report_data = get_bid_report_data(attachment)
+    if report_data is None:
+        return None
+
+    normalized_feedback = _normalize_report_feedback(feedback)
+    attachment.report_feedback = normalized_feedback
+    _write_report_feedback(report_data, normalized_feedback)
+    attachment.report_data = json.dumps(report_data, ensure_ascii=False, sort_keys=True)
+    if attachment.company:
+        attachment.company.updated_at = china_now()
+    db.commit()
+    db.refresh(attachment)
+    return report_data
 
 
 def update_bid_report_issue_feedback(

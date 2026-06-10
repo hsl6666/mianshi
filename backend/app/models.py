@@ -183,6 +183,7 @@ class ProjectAttachment(Base):
     report_size_bytes: Mapped[Optional[int]] = mapped_column(Integer)
     report_uploaded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False))
     report_data: Mapped[Optional[str]] = mapped_column(Text)
+    report_feedback: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=china_now)
 
     project: Mapped["BiddingProject"] = relationship(back_populates="attachments")

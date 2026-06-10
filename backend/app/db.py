@@ -716,6 +716,40 @@ def _migrate_bid_report_data_field() -> None:
         )
 
 
+def _migrate_bid_report_feedback_field() -> None:
+    """Add report-level user feedback to bid-file versions."""
+    inspector = inspect(engine)
+    if "project_attachments" not in inspector.get_table_names():
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS app_migrations (
+                    name VARCHAR(128) PRIMARY KEY,
+                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        marker = conn.execute(
+            text("SELECT name FROM app_migrations WHERE name = :name"),
+            {"name": "bid_report_feedback_v1"},
+        ).fetchone()
+        if marker:
+            return
+
+        columns = {col["name"] for col in inspector.get_columns("project_attachments")}
+        if "report_feedback" not in columns:
+            conn.execute(text("ALTER TABLE project_attachments ADD COLUMN report_feedback TEXT"))
+
+        conn.execute(
+            text("INSERT INTO app_migrations (name) VALUES (:name)"),
+            {"name": "bid_report_feedback_v1"},
+        )
+
+
 def _migrate_bid_file_sync_metadata() -> None:
     """Store local analysis-platform association IDs returned by third-party sync ACK."""
     inspector = inspect(engine)
@@ -1057,6 +1091,7 @@ def init_db() -> None:
     _migrate_third_party_sync_status()
     _migrate_bid_file_sync_and_report_fields()
     _migrate_bid_report_data_field()
+    _migrate_bid_report_feedback_field()
     _migrate_bid_file_sync_metadata()
     _migrate_third_party_bidding_fields()
     _migrate_group_attachment_third_party_file_name()

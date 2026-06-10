@@ -52,6 +52,7 @@ export interface TechnicalReportPage2ViewModel {
   optimizations: OptimizationRow[];
   dimensionSummary?: string;
   issuePrioritySummaries?: Partial<Record<Priority, string>>;
+  feedbackSuggestion?: string;
   conclusion?: {
     main: string;
     suggestion: string;
@@ -529,6 +530,7 @@ export function parseTechnicalReportPage2Data(raw: unknown): TechnicalReportPage
     optimizations,
     dimensionSummary: asString(summary?.supplement_adjustment_direction) || undefined,
     issuePrioritySummaries: mapIssuePrioritySummaries(issues),
+    feedbackSuggestion: asString(report.feedback_suggestion) || undefined,
     conclusion: mapConclusion(report),
     nextSteps: mapNextSteps(report, optimizations),
   };

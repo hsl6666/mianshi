@@ -76,6 +76,7 @@ def _to_company_item(company, project: BiddingProject) -> CompanyListItem:
                 report_title=attachment.report_title,
                 report_final_score=attachment.report_final_score,
                 report_rating=attachment.report_rating,
+                report_feedback=attachment.report_feedback,
                 created_at=attachment.created_at,
             )
             for attachment in versions

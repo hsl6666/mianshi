@@ -289,6 +289,17 @@ export async function updateBidVersionIssueFeedback(args: {
   return data;
 }
 
+export async function updateBidVersionReportFeedback(args: {
+  attachmentId: number;
+  feedback: string;
+}): Promise<TechnicalReviewReportRawOut> {
+  const { data } = await apiClient.patch<TechnicalReviewReportRawOut>(
+    `/api/bid-versions/${args.attachmentId}/report-feedback`,
+    { feedback: args.feedback },
+  );
+  return data;
+}
+
 export function getGroupAttachmentDownloadUrl(groupId: number, attachmentId: number) {
   const base = import.meta.env.DEV ? "" : (import.meta.env.VITE_API_BASE_URL ?? "");
   return `${base}/api/bidding-project-groups/${groupId}/attachments/${attachmentId}/download`;

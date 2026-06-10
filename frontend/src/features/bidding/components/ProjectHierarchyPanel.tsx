@@ -310,6 +310,13 @@ export default function ProjectHierarchyPanel({
       },
     },
     {
+      title: "反馈建议",
+      dataIndex: "report_feedback",
+      width: 220,
+      render: (value: string | null) =>
+        value ? <EllipsisTooltip title={value} /> : <span className="text-gray-400">-</span>,
+    },
+    {
       title: "操作",
       key: "actions",
       width: 360,
@@ -546,7 +553,7 @@ export default function ProjectHierarchyPanel({
               columns={versionColumns}
               dataSource={selectedCompany.company.children}
               locale={{ emptyText: "暂无投标文件版本" }}
-              scroll={{ x: 1100 }}
+              scroll={{ x: 1320 }}
             />
           </div>
         )}
