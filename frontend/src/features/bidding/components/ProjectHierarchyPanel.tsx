@@ -91,10 +91,7 @@ interface ProjectHierarchyPanelProps {
   ) => void;
   onDeleteVersion: (versionId: number) => void;
   onJsonUpload: (record: BidVersionListItem) => void;
-  onAnalyzeVersion: (
-    record: BidVersionListItem,
-    context: { groupId: number; companyName: string },
-  ) => void;
+  onAnalyzeVersion: (record: BidVersionListItem) => void;
   analyzingVersionIds: Set<number>;
   onRefresh: () => void;
 }
@@ -419,11 +416,7 @@ export default function ProjectHierarchyPanel({
                 loading={analyzingVersionIds.has(record.id)}
                 disabled={record.report_status === "analyzing"}
                 onClick={() => {
-                  if (!selectedCompany) return;
-                  onAnalyzeVersion(record, {
-                    groupId: selectedCompany.groupId,
-                    companyName: selectedCompany.company.name,
-                  });
+                  onAnalyzeVersion(record);
                 }}
               >
                 分析
