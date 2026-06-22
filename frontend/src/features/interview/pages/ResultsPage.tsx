@@ -42,6 +42,12 @@ const riskConfig: Record<RiskLevel, { label: string; color: string }> = {
   high: { label: "高风险", color: "red" },
 };
 
+function buildBasicInfoUrl(sessionId: string) {
+  const baseUrl = String(import.meta.env.VITE_APP_BASE_URL || "").replace(/\/$/, "");
+  const query = new URLSearchParams({ sessionId, readonly: "1" });
+  return `${baseUrl}/interview/basic?${query.toString()}`;
+}
+
 export default function ResultsPage() {
   const [rows, setRows] = useState<InterviewResultSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -296,7 +302,10 @@ function ReportDetail({ detail }: { detail: InterviewResultDetail }) {
             </Typography.Title>
             <p className="text-sm text-stone-500">{summary.role}</p>
           </div>
-          <Space>
+          <Space wrap>
+            <Button href={buildBasicInfoUrl(summary.session_id)} target="_blank" rel="noreferrer" icon={<FileSearchOutlined />}>
+              查看基础信息
+            </Button>
             <Tag color={risk.color}>{risk.label}</Tag>
             <Tag color="blue">{statusLabels[summary.status] || summary.status}</Tag>
           </Space>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
 import { Button, DatePicker, Input, Modal, Select, Space, Tag, Upload, message, type UploadProps } from "antd";
 import { ArrowRightOutlined, CameraOutlined, CloseOutlined, FileTextOutlined, PrinterOutlined, ReloadOutlined, UploadOutlined } from "@ant-design/icons";
@@ -11,7 +11,7 @@ import {
   uploadResumeAttachment,
 } from "../api";
 import PositionSelect from "../components/PositionSelect";
-import { emptyProfile, getInterviewSessionId, loadProfile, saveProfile } from "../storage";
+import { emptyProfile, getInterviewSessionId, loadProfile, normalizeProfile, saveProfile } from "../storage";
 import type { CandidateProfile, EducationExperience, FamilyMember, InterviewSession, WorkExperience } from "../types";
 
 type TextFieldKey = {
@@ -32,8 +32,11 @@ const selectClass = `${controlClass} [&_.ant-select-selector]:!h-full [&_.ant-se
 
 export default function BasicInfoPage() {
   const navigate = useNavigate();
-  const sessionId = useMemo(() => getInterviewSessionId(), []);
-  const [profile, setProfile] = useState<CandidateProfile>(() => loadProfile(sessionId));
+  const [searchParams] = useSearchParams();
+  const querySessionId = useMemo(() => searchParams.get("sessionId")?.trim() || "", [searchParams]);
+  const isReadOnly = searchParams.get("readonly") === "1";
+  const sessionId = useMemo(() => (isReadOnly ? querySessionId : getInterviewSessionId()), [isReadOnly, querySessionId]);
+  const [profile, setProfile] = useState<CandidateProfile>(() => (isReadOnly ? normalizeProfile({}) : loadProfile(sessionId)));
   const [session, setSession] = useState<InterviewSession | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -44,22 +47,58 @@ export default function BasicInfoPage() {
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const errors = validateProfile(profile);
   const parsedFields = session?.parsed_profile || {};
-  const hasParsedFields = Object.values(parsedFields).some(Boolean) && appliedParsedAt !== session?.updated_at;
+  const hasParsedFields = !isReadOnly && Object.values(parsedFields).some(Boolean) && appliedParsedAt !== session?.updated_at;
 
   useEffect(() => {
+    if (!isReadOnly) {
+      setProfile(loadProfile(sessionId));
+    }
+  }, [isReadOnly, sessionId]);
+
+  useEffect(() => {
+    if (!isReadOnly) return;
+    if (!sessionId) {
+      setSession(null);
+      setProfile(normalizeProfile({}));
+      message.error("缺少候选人 sessionId，无法加载基础信息");
+      return;
+    }
+
+    let ignore = false;
+    fetchSession(sessionId)
+      .then((nextSession) => {
+        if (ignore) return;
+        setSession(nextSession);
+        setProfile(normalizeProfile(nextSession.candidate_profile));
+      })
+      .catch(() => {
+        if (ignore) return;
+        setSession(null);
+        setProfile(normalizeProfile({}));
+        message.error("加载候选人基础信息失败，请确认后端服务可用");
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [isReadOnly, sessionId]);
+
+  useEffect(() => {
+    if (isReadOnly) return;
     createOrUpdateSession(sessionId, profile)
       .then(setSession)
       .catch(() => message.warning("后端暂未连接，本地表单仍会保存"));
-  }, [profile, sessionId]);
+  }, [isReadOnly, profile, sessionId]);
 
   useEffect(() => {
+    if (isReadOnly) return;
     const timer = window.setInterval(() => {
       fetchSession(sessionId)
         .then(setSession)
         .catch(() => undefined);
     }, 2000);
     return () => window.clearInterval(timer);
-  }, [sessionId]);
+  }, [isReadOnly, sessionId]);
 
   useEffect(() => {
     return () => {
@@ -75,6 +114,7 @@ export default function BasicInfoPage() {
   }
 
   function updateField(key: TextFieldKey, value: string) {
+    if (isReadOnly) return;
     const next = { ...profile, [key]: value };
     if (key === "role") next.role = value;
     if (key === "education_level") next.degree = value;
@@ -83,6 +123,7 @@ export default function BasicInfoPage() {
   }
 
   function updateWorkExperience(index: number, key: keyof WorkExperience, value: string) {
+    if (isReadOnly) return;
     const rows = [...profile.work_experiences];
     rows[index] = { ...rows[index], [key]: value };
     const next = { ...profile, work_experiences: rows };
@@ -91,6 +132,7 @@ export default function BasicInfoPage() {
   }
 
   function updateEducationExperience(index: number, key: keyof EducationExperience, value: string) {
+    if (isReadOnly) return;
     const rows = [...profile.education_experiences];
     rows[index] = { ...rows[index], [key]: value };
     const next = { ...profile, education_experiences: rows };
@@ -99,6 +141,7 @@ export default function BasicInfoPage() {
   }
 
   function updateFamilyMember(index: number, key: keyof FamilyMember, value: string) {
+    if (isReadOnly) return;
     const rows = [...profile.family_members];
     rows[index] = { ...rows[index], [key]: value };
     const next = { ...profile, family_members: rows };
@@ -107,17 +150,20 @@ export default function BasicInfoPage() {
   }
 
   function queueLocalSave(next: CandidateProfile) {
+    if (isReadOnly) return;
     window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => saveProfile(sessionId, next), 350);
   }
 
   function updatePhoto(value: string) {
+    if (isReadOnly) return;
     const next = { ...profile, profile_photo_data_url: value };
     setProfile(next);
     queueLocalSave(next);
   }
 
   function handlePhotoFileChange(event: ChangeEvent<HTMLInputElement>) {
+    if (isReadOnly) return;
     const file = event.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) {
@@ -134,6 +180,7 @@ export default function BasicInfoPage() {
   }
 
   async function startCamera() {
+    if (isReadOnly) return;
     if (!navigator.mediaDevices?.getUserMedia) {
       message.error("当前浏览器不支持摄像头");
       return;
@@ -161,6 +208,7 @@ export default function BasicInfoPage() {
   }
 
   function capturePhoto() {
+    if (isReadOnly) return;
     if (!videoRef.current) return;
     const video = videoRef.current;
     const canvas = document.createElement("canvas");
@@ -175,6 +223,7 @@ export default function BasicInfoPage() {
   }
 
   function applyParsedProfile() {
+    if (isReadOnly) return;
     const next = { ...profile };
     textFieldKeys.forEach((key) => {
       const value = parsedFields[key];
@@ -189,6 +238,7 @@ export default function BasicInfoPage() {
   }
 
   async function uploadResume(file: File) {
+    if (isReadOnly) return;
     setUploading(true);
     try {
       await createOrUpdateSession(sessionId, profile);
@@ -212,6 +262,7 @@ export default function BasicInfoPage() {
   };
 
   async function goNext() {
+    if (isReadOnly) return;
     if (Object.keys(errors).length > 0) {
       message.error("请先修正表单校验项");
       return;
@@ -229,6 +280,7 @@ export default function BasicInfoPage() {
   }
 
   function resetForm() {
+    if (isReadOnly) return;
     const next = JSON.parse(JSON.stringify(emptyProfile)) as CandidateProfile;
     next.fill_date = dayjs().format("YYYY-MM-DD");
     setProfile(next);
@@ -265,14 +317,16 @@ export default function BasicInfoPage() {
           <div className="mb-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="text-[15px] font-semibold text-slate-900">简历上传</div>
-                <p className="mt-1 text-xs leading-5 text-slate-500">支持 PDF、Word、图片和文本文件</p>
+                <div className="text-[15px] font-semibold text-slate-900">{isReadOnly ? "简历附件" : "简历上传"}</div>
+                <p className="mt-1 text-xs leading-5 text-slate-500">{isReadOnly ? "候选人提交过的附件资料" : "支持 PDF、Word、图片和文本文件"}</p>
               </div>
-              <Upload {...uploadProps}>
-                <Button type="primary" icon={<UploadOutlined />} loading={uploading}>
-                  上传简历
-                </Button>
-              </Upload>
+              {isReadOnly ? null : (
+                <Upload {...uploadProps}>
+                  <Button type="primary" icon={<UploadOutlined />} loading={uploading}>
+                    上传简历
+                  </Button>
+                </Upload>
+              )}
             </div>
             {session?.attachments.length ? (
               <div className="mt-3 flex flex-wrap gap-2">
@@ -293,6 +347,7 @@ export default function BasicInfoPage() {
               <PositionSelect
                 variant="borderless"
                 value={profile.role || undefined}
+                disabled={isReadOnly}
                 onChange={(value) => updateField("role", value || "")}
                 className="!h-7 !w-full [&_.ant-select-selector]:!rounded-none [&_.ant-select-selector]:!border-0 [&_.ant-select-selector]:!border-b [&_.ant-select-selector]:!border-[#555] [&_.ant-select-selector]:!bg-transparent [&_.ant-select-selector]:!px-1 [&_.ant-select-selection-item]:!text-[15px]"
               />
@@ -302,6 +357,7 @@ export default function BasicInfoPage() {
               <DatePicker
                 variant="borderless"
                 value={profile.fill_date ? dayjs(profile.fill_date) : null}
+                disabled={isReadOnly}
                 onChange={(_, value) => updateField("fill_date", String(value || ""))}
                 className="!h-7 !w-full !rounded-none !border-0 !border-b !border-[#555] !bg-transparent !px-1"
               />
@@ -335,27 +391,33 @@ export default function BasicInfoPage() {
                   {profile.profile_photo_data_url ? (
                     <div className="relative h-full min-h-[168px] w-full overflow-hidden rounded-md bg-white p-1 shadow-[0_4px_12px_rgba(15,23,42,0.16)]">
                       <img src={profile.profile_photo_data_url} alt="候选人照片" className="h-full min-h-[160px] w-full rounded object-cover" />
-                      <Button
-                        type="primary"
-                        shape="circle"
-                        danger
-                        size="small"
-                        icon={<CloseOutlined />}
-                        className="!absolute right-2 top-2"
-                        onClick={() => updatePhoto("")}
-                      />
+                      {isReadOnly ? null : (
+                        <Button
+                          type="primary"
+                          shape="circle"
+                          danger
+                          size="small"
+                          icon={<CloseOutlined />}
+                          className="!absolute right-2 top-2"
+                          onClick={() => updatePhoto("")}
+                        />
+                      )}
                     </div>
                   ) : (
                     <div className="flex min-h-[168px] flex-col items-center justify-center gap-2 p-2">
-                      <div className="flex flex-wrap items-center justify-center gap-1">
-                        <label className="cursor-pointer">
-                          <input type="file" accept="image/*" className="hidden" onChange={handlePhotoFileChange} />
-                          <span className="inline-flex h-7 items-center rounded border border-slate-300 px-2 text-xs text-slate-700">上传照片</span>
-                        </label>
-                        <Button size="small" icon={<CameraOutlined />} onClick={() => void startCamera()}>
-                          开启摄像头
-                        </Button>
-                      </div>
+                      {isReadOnly ? (
+                        <span>未上传照片</span>
+                      ) : (
+                        <div className="flex flex-wrap items-center justify-center gap-1">
+                          <label className="cursor-pointer">
+                            <input type="file" accept="image/*" className="hidden" onChange={handlePhotoFileChange} />
+                            <span className="inline-flex h-7 items-center rounded border border-slate-300 px-2 text-xs text-slate-700">上传照片</span>
+                          </label>
+                          <Button size="small" icon={<CameraOutlined />} onClick={() => void startCamera()}>
+                            开启摄像头
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </td>
@@ -524,6 +586,7 @@ export default function BasicInfoPage() {
                     variant="borderless"
                     value={profile.self_evaluation}
                     placeholder="个人评价："
+                    readOnly={isReadOnly}
                     onChange={(event) => updateField("self_evaluation", event.target.value)}
                     className="!min-h-[112px] !w-full !resize-y !rounded-none !border-0 !bg-transparent !px-2 !py-2 !leading-7 !shadow-none"
                   />
@@ -533,12 +596,16 @@ export default function BasicInfoPage() {
           </table>
 
           <div className="mt-6 flex justify-center gap-3">
-            <Button htmlType="submit" type="primary" loading={saving} icon={<ArrowRightOutlined />} className="min-w-[108px] !rounded-full">
-              提交登记
-            </Button>
-            <Button icon={<ReloadOutlined />} onClick={resetForm} className="min-w-[108px] !rounded-full">
-              重置表单
-            </Button>
+            {isReadOnly ? null : (
+              <>
+                <Button htmlType="submit" type="primary" loading={saving} icon={<ArrowRightOutlined />} className="min-w-[108px] !rounded-full">
+                  提交登记
+                </Button>
+                <Button icon={<ReloadOutlined />} onClick={resetForm} className="min-w-[108px] !rounded-full">
+                  重置表单
+                </Button>
+              </>
+            )}
             <Button icon={<PrinterOutlined />} onClick={() => window.print()} className="min-w-[108px] !rounded-full">
               打印表单
             </Button>
@@ -575,6 +642,7 @@ export default function BasicInfoPage() {
         type={type}
         placeholder={placeholder}
         value={profile[field]}
+        readOnly={isReadOnly}
         status={errors[field] ? "error" : undefined}
         onChange={(event) => updateField(field, event.target.value)}
         className={controlClass}
@@ -588,6 +656,7 @@ export default function BasicInfoPage() {
         variant="borderless"
         allowClear
         value={profile[field] || undefined}
+        disabled={isReadOnly}
         options={options.map((item) => ({ label: item, value: item }))}
         onChange={(value) => updateField(field, value || "")}
         className={selectClass}
@@ -606,6 +675,7 @@ export default function BasicInfoPage() {
         picker="month"
         placeholder="请选择"
         value={value ? dayjs(value) : null}
+        disabled={isReadOnly}
         onChange={(_, dateString) => onChange(String(dateString || ""))}
         className={pickerClass}
       />
@@ -618,6 +688,7 @@ export default function BasicInfoPage() {
         variant="borderless"
         placeholder="请选择"
         value={value ? dayjs(value) : null}
+        disabled={isReadOnly}
         onChange={(_, dateString) => onChange(String(dateString || ""))}
         className={pickerClass}
       />
@@ -625,7 +696,7 @@ export default function BasicInfoPage() {
   }
 
   function plainValue(value: string, onChange: (value: string) => void) {
-    return <Input variant="borderless" value={value} onChange={(event) => onChange(event.target.value)} className={controlClass} />;
+    return <Input variant="borderless" value={value} readOnly={isReadOnly} onChange={(event) => onChange(event.target.value)} className={controlClass} />;
   }
 }
 

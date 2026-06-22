@@ -56,11 +56,11 @@ export function resetInterviewSession() {
 
 export function loadProfile(sessionId: string): CandidateProfile {
   const value = localStorage.getItem(`${PROFILE_PREFIX}${sessionId}`);
-  if (!value) return emptyProfile;
+  if (!value) return normalizeProfile({});
   try {
-    return normalizeProfile({ ...emptyProfile, ...JSON.parse(value) });
+    return normalizeProfile(JSON.parse(value) as Partial<CandidateProfile>);
   } catch {
-    return emptyProfile;
+    return normalizeProfile({});
   }
 }
 
@@ -86,8 +86,9 @@ export function saveOralMessages(sessionId: string, messages: unknown[]) {
   localStorage.setItem(`${ORAL_PREFIX}${sessionId}`, JSON.stringify(messages));
 }
 
-function normalizeProfile(profile: CandidateProfile): CandidateProfile {
+export function normalizeProfile(profile: Partial<CandidateProfile>): CandidateProfile {
   return {
+    ...emptyProfile,
     ...profile,
     fill_date: profile.fill_date || dayjs().format("YYYY-MM-DD"),
     work_experiences: normalizeWorkRows(profile.work_experiences, 3),
@@ -96,8 +97,8 @@ function normalizeProfile(profile: CandidateProfile): CandidateProfile {
   };
 }
 
-function normalizeRows<T>(rows: T[] | undefined, factory: () => T, count: number) {
-  const normalized = Array.isArray(rows) ? rows.slice(0, count) : [];
+function normalizeRows<T>(rows: Array<Partial<T>> | undefined, factory: () => T, count: number): T[] {
+  const normalized = Array.isArray(rows) ? rows.slice(0, count).map((row) => ({ ...factory(), ...row })) : [];
   while (normalized.length < count) normalized.push(factory());
   return normalized;
 }
