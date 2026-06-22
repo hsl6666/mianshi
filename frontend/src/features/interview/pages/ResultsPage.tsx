@@ -48,6 +48,12 @@ function buildBasicInfoUrl(sessionId: string) {
   return `${baseUrl}/interview/basic?${query.toString()}`;
 }
 
+function buildResultReviewUrl(sessionId: string, type: "written" | "oral") {
+  const baseUrl = String(import.meta.env.VITE_APP_BASE_URL || "").replace(/\/$/, "");
+  const query = new URLSearchParams({ sessionId });
+  return `${baseUrl}/interview/results/${type}?${query.toString()}`;
+}
+
 export default function ResultsPage() {
   const [rows, setRows] = useState<InterviewResultSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -325,8 +331,8 @@ function ReportDetail({ detail }: { detail: InterviewResultDetail }) {
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <ScoreBlock label="综合" value={scores.total_score} />
         <ScoreBlock label="资料" value={scores.profile_score} />
-        <ScoreBlock label="笔试" value={scores.written_score} />
-        <ScoreBlock label="口试" value={scores.oral_score} />
+        <ScoreBlock label="笔试" value={scores.written_score} actionHref={buildResultReviewUrl(summary.session_id, "written")} />
+        <ScoreBlock label="口试" value={scores.oral_score} actionHref={buildResultReviewUrl(summary.session_id, "oral")} />
       </section>
 
       <section className="rounded-xl border border-stone-200 p-5">
@@ -393,7 +399,7 @@ function formatDuration(value: number) {
   return `${minutes}:${seconds}`;
 }
 
-function ScoreBlock({ label, value }: { label: string; value: number }) {
+function ScoreBlock({ label, value, actionHref }: { label: string; value: number; actionHref?: string }) {
   return (
     <div className="rounded-xl border border-stone-200 p-4">
       <div className="mb-3 flex items-center justify-between">
@@ -401,6 +407,11 @@ function ScoreBlock({ label, value }: { label: string; value: number }) {
         <span className="text-lg font-semibold text-stone-950">{value}</span>
       </div>
       <Progress percent={value} showInfo={false} strokeColor="#14532d" />
+      {actionHref ? (
+        <Button href={actionHref} target="_blank" rel="noreferrer" type="link" size="small" icon={<EyeOutlined />} className="mt-3 !px-0">
+          查看
+        </Button>
+      ) : null}
     </div>
   );
 }

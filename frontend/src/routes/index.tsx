@@ -47,6 +47,20 @@ const routes: RouteObject[] = [
         }),
         HydrateFallback: ProgressBar,
       },
+      {
+        path: "results/written",
+        lazy: async () => ({
+          Component: (await import("@/features/interview/pages/WrittenAnswersReviewPage")).default,
+        }),
+        HydrateFallback: ProgressBar,
+      },
+      {
+        path: "results/oral",
+        lazy: async () => ({
+          Component: (await import("@/features/interview/pages/OralAnswersReviewPage")).default,
+        }),
+        HydrateFallback: ProgressBar,
+      },
     ],
   },
   {
