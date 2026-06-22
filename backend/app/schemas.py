@@ -131,6 +131,7 @@ class WrittenQuestionCreate(BaseModel):
     role_tags: str = ""
     difficulty: str = "medium"
     source: str = "manual"
+    evaluation_points: str = ""
     published: bool = False
 
 
@@ -144,6 +145,7 @@ class WrittenQuestionUpdate(BaseModel):
     role_tags: Optional[str] = None
     difficulty: Optional[str] = None
     source: Optional[str] = None
+    evaluation_points: Optional[str] = None
     published: Optional[bool] = None
 
 
@@ -153,6 +155,42 @@ class WrittenQuestionRead(Question):
     role_tags: str = ""
     difficulty: str = "medium"
     source: str = "manual"
+    evaluation_points: str = ""
+    published: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+
+class OralQuestionCreate(BaseModel):
+    title: str
+    prompt: str
+    role_tags: str = ""
+    difficulty: str = "medium"
+    source: str = "manual"
+    sort_order: int = 0
+    published: bool = False
+
+
+class OralQuestionUpdate(BaseModel):
+    title: Optional[str] = None
+    prompt: Optional[str] = None
+    role_tags: Optional[str] = None
+    difficulty: Optional[str] = None
+    source: Optional[str] = None
+    sort_order: Optional[int] = None
+    published: Optional[bool] = None
+
+
+class OralQuestionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    title: str
+    prompt: str
+    role_tags: str = ""
+    difficulty: str = "medium"
+    source: str = "manual"
+    sort_order: int = 0
     published: bool = False
     created_at: datetime
     updated_at: datetime

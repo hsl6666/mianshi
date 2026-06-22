@@ -9,6 +9,7 @@ import type {
   JobPositionUpdate,
   LlmModelConfig,
   LlmModelConfigUpdate,
+  OralQuestion,
   Question,
   QuestionGenerationRequest,
   QuestionGenerationResponse,
@@ -68,6 +69,11 @@ export async function fetchQuestions(role: string) {
   return data;
 }
 
+export async function fetchOralQuestions(role: string) {
+  const { data } = await client.get<OralQuestion[]>("/api/oral-questions", { params: { role } });
+  return data;
+}
+
 export async function fetchPositions() {
   const { data } = await client.get<JobPosition[]>("/api/positions");
   return data;
@@ -113,6 +119,26 @@ export async function updateAdminWrittenQuestion(
 
 export async function deleteAdminWrittenQuestion(questionId: string) {
   const { data } = await client.delete<{ ok: boolean }>(`/api/admin/written-questions/${questionId}`);
+  return data;
+}
+
+export async function fetchAdminOralQuestions() {
+  const { data } = await client.get<OralQuestion[]>("/api/admin/oral-questions");
+  return data;
+}
+
+export async function createAdminOralQuestion(payload: Omit<OralQuestion, "id" | "created_at" | "updated_at">) {
+  const { data } = await client.post<OralQuestion>("/api/admin/oral-questions", payload);
+  return data;
+}
+
+export async function updateAdminOralQuestion(questionId: string, payload: Partial<Omit<OralQuestion, "id" | "created_at" | "updated_at">>) {
+  const { data } = await client.patch<OralQuestion>(`/api/admin/oral-questions/${questionId}`, payload);
+  return data;
+}
+
+export async function deleteAdminOralQuestion(questionId: string) {
+  const { data } = await client.delete<{ ok: boolean }>(`/api/admin/oral-questions/${questionId}`);
   return data;
 }
 

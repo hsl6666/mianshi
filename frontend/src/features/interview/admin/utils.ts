@@ -13,6 +13,7 @@ export function defaultQuestionForm(): QuestionFormValues {
     role_tags: "通用",
     difficulty: "medium",
     source: "manual",
+    evaluation_points: "",
     published: false,
   };
 }
@@ -28,6 +29,7 @@ export function questionToFormValues(question: WrittenQuestion): QuestionFormVal
     role_tags: question.role_tags || "通用",
     difficulty: question.difficulty || "medium",
     source: question.source || "manual",
+    evaluation_points: question.evaluation_points || "",
     published: Boolean(question.published),
   };
 }

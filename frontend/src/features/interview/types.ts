@@ -124,6 +124,20 @@ export type WrittenQuestion = Question & {
   role_tags: string;
   difficulty: string;
   source: string;
+  evaluation_points: string;
+  published: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OralQuestion = {
+  id: string;
+  title: string;
+  prompt: string;
+  role_tags: string;
+  difficulty: string;
+  source: string;
+  sort_order: number;
   published: boolean;
   created_at: string;
   updated_at: string;

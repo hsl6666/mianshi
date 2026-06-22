@@ -2,12 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Alert, Button, Empty, Progress, Space, Tag, message } from "antd";
 import { ArrowRightOutlined, AudioOutlined, CheckCircleOutlined, ReloadOutlined, StopOutlined } from "@ant-design/icons";
-import { createOrUpdateSession, fetchSession, resolveAssetUrl, saveOralSummary, uploadOralRecording } from "../api";
+import { createOrUpdateSession, fetchOralQuestions, fetchSession, resolveAssetUrl, saveOralSummary, uploadOralRecording } from "../api";
 import { InterviewShell } from "../components/InterviewShell";
 import { getInterviewSessionId, loadProfile } from "../storage";
-import type { InterviewSession, OralRecording } from "../types";
+import type { InterviewSession, OralQuestion, OralRecording } from "../types";
 
-const ORAL_QUESTIONS = [
+const DEFAULT_ORAL_QUESTIONS = [
   "请用 1 分钟介绍你最近最能代表能力的项目。",
   "请说明这个项目中最困难的技术问题、你的解决方案和最终结果。",
   "如果线上接口 P95 延迟从 200ms 升到 2s，你会如何定位？",
@@ -30,6 +30,7 @@ export default function OralInterviewPage() {
   const navigate = useNavigate();
   const sessionId = useMemo(() => getInterviewSessionId(), []);
   const [session, setSession] = useState<InterviewSession | null>(null);
+  const [questions, setQuestions] = useState<string[]>(DEFAULT_ORAL_QUESTIONS);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [recordings, setRecordings] = useState<Record<number, RecordedAnswer>>({});
   const [recordingIndex, setRecordingIndex] = useState<number | null>(null);
@@ -43,10 +44,10 @@ export default function OralInterviewPage() {
   const elapsedTimerRef = useRef<number>();
 
   const completedCount = Object.values(recordings).filter((item) => item.uploadedUrl).length;
-  const activeQuestion = ORAL_QUESTIONS[currentIndex];
+  const activeQuestion = questions[currentIndex];
   const activeAnswer = recordings[currentIndex];
   const isCurrentRecording = recordingIndex === currentIndex;
-  const canFinish = completedCount === ORAL_QUESTIONS.length && recordingIndex === null && uploadingIndex === null;
+  const canFinish = completedCount === questions.length && recordingIndex === null && uploadingIndex === null;
 
   useEffect(() => {
     void ensureSession();
@@ -60,15 +61,21 @@ export default function OralInterviewPage() {
     };
   }, []);
 
+  useEffect(() => {
+    setCurrentIndex((value) => Math.min(value, Math.max(questions.length - 1, 0)));
+  }, [questions]);
+
   async function ensureSession() {
     setLoading(true);
     try {
       const nextSession = await createOrUpdateSession(sessionId, loadProfile(sessionId));
+      await loadOralQuestions(nextSession.role || String(nextSession.candidate_profile.role || ""));
       restoreRecordings(nextSession);
       setSession(nextSession);
     } catch {
       try {
         const nextSession = await fetchSession(sessionId);
+        await loadOralQuestions(nextSession.role || String(nextSession.candidate_profile.role || ""));
         restoreRecordings(nextSession);
         setSession(nextSession);
       } catch {
@@ -76,6 +83,16 @@ export default function OralInterviewPage() {
       }
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadOralQuestions(role: string) {
+    try {
+      const rows = await fetchOralQuestions(role);
+      const nextQuestions = rows.map((item: OralQuestion) => item.prompt).filter(Boolean);
+      if (nextQuestions.length) setQuestions(nextQuestions);
+    } catch {
+      setQuestions(DEFAULT_ORAL_QUESTIONS);
     }
   }
 
@@ -144,7 +161,7 @@ export default function OralInterviewPage() {
     const extension = getAudioExtension(mimeType);
     const answer: RecordedAnswer = {
       questionIndex: index,
-      questionText: ORAL_QUESTIONS[index],
+      questionText: questions[index],
       filename: `oral-question-${index + 1}-${Date.now()}.${extension}`,
       durationSeconds,
       recordedAt: new Date().toISOString(),
@@ -185,7 +202,7 @@ export default function OralInterviewPage() {
         },
       }));
       message.success(`第 ${answer.questionIndex + 1} 题录音已保存`);
-      setCurrentIndex((value) => (value === answer.questionIndex ? Math.min(answer.questionIndex + 1, ORAL_QUESTIONS.length - 1) : value));
+      setCurrentIndex((value) => (value === answer.questionIndex ? Math.min(answer.questionIndex + 1, questions.length - 1) : value));
     } catch {
       message.error("录音已生成，但上传失败，请检查后端服务后重试上传");
     } finally {
@@ -207,7 +224,7 @@ export default function OralInterviewPage() {
       message.warning("请先完成所有题目的录音上传");
       return;
     }
-    const qa = ORAL_QUESTIONS.map((question, index) => {
+    const qa = questions.map((question, index) => {
       const answer = recordings[index];
       return {
         question,
@@ -235,8 +252,8 @@ export default function OralInterviewPage() {
       }
     });
     setRecordings(restored);
-    const firstUnfinished = ORAL_QUESTIONS.findIndex((_, index) => !restored[index]?.uploadedUrl);
-    setCurrentIndex(firstUnfinished === -1 ? ORAL_QUESTIONS.length - 1 : firstUnfinished);
+    const firstUnfinished = questions.findIndex((_, index) => !restored[index]?.uploadedUrl);
+    setCurrentIndex(firstUnfinished === -1 ? Math.max(questions.length - 1, 0) : firstUnfinished);
   }
 
   return (
@@ -247,10 +264,10 @@ export default function OralInterviewPage() {
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-stone-600">完成进度</span>
               <Tag color={canFinish ? "green" : "blue"}>
-                {completedCount}/{ORAL_QUESTIONS.length}
+                {completedCount}/{questions.length}
               </Tag>
             </div>
-            <Progress percent={Math.round((completedCount / ORAL_QUESTIONS.length) * 100)} strokeColor="#14532d" className="mt-3" />
+            <Progress percent={questions.length ? Math.round((completedCount / questions.length) * 100) : 0} strokeColor="#14532d" className="mt-3" />
             <Button
               type="primary"
               block
@@ -264,7 +281,7 @@ export default function OralInterviewPage() {
           </div>
 
           <div className="rounded-xl border border-stone-200 bg-white p-3 shadow-sm">
-            {ORAL_QUESTIONS.map((question, index) => {
+            {questions.map((question, index) => {
               const answer = recordings[index];
               const active = index === currentIndex;
               return (

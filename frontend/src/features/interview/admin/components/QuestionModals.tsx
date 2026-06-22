@@ -180,6 +180,9 @@ export function QuestionEditorModal({
         <Form.Item label="题干" name="prompt" rules={[{ required: true, message: "请输入题干" }]}>
           <Input.TextArea rows={4} />
         </Form.Item>
+        <Form.Item label="考察点（仅后台可见）" name="evaluation_points">
+          <Input.TextArea rows={4} placeholder="例如：是否真正用过 Git 协作，是否理解提交历史管理。" />
+        </Form.Item>
         {type === "single" || type === "multi" ? (
           <Form.List name="options">
             {(fields, { add, remove }) => (

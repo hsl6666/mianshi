@@ -3,6 +3,9 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.schemas import (
+    OralQuestionCreate,
+    OralQuestionRead,
+    OralQuestionUpdate,
     Question,
     QuestionGenerationRequest,
     QuestionGenerationResponse,
@@ -12,11 +15,16 @@ from app.schemas import (
 )
 from app.services.questions import (
     DEFAULT_SYSTEM_PROMPT,
+    create_oral_question,
     create_question,
+    delete_oral_question,
     delete_question,
     generate_questions,
+    get_oral_questions_for_role,
     get_questions_for_role,
+    list_oral_questions,
     list_questions,
+    update_oral_question,
     update_question,
 )
 from app.services.llm_config import LlmConfigError, LlmProviderError
@@ -27,6 +35,11 @@ router = APIRouter(tags=["questions"])
 @router.get("/api/questions", response_model=list[Question])
 def questions(role: str = "", db: Session = Depends(get_db)) -> list[Question]:
     return get_questions_for_role(db, role)
+
+
+@router.get("/api/oral-questions", response_model=list[OralQuestionRead])
+def oral_questions(role: str = "", db: Session = Depends(get_db)) -> list:
+    return get_oral_questions_for_role(db, role)
 
 
 @router.get("/api/admin/written-questions", response_model=list[WrittenQuestionRead])
@@ -50,6 +63,32 @@ def admin_update_question(question_id: str, payload: WrittenQuestionUpdate, db: 
 @router.delete("/api/admin/written-questions/{question_id}")
 def admin_delete_question(question_id: str, db: Session = Depends(get_db)) -> dict[str, bool]:
     deleted = delete_question(db, question_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="question not found")
+    return {"ok": True}
+
+
+@router.get("/api/admin/oral-questions", response_model=list[OralQuestionRead])
+def admin_list_oral_questions(db: Session = Depends(get_db)) -> list:
+    return list_oral_questions(db)
+
+
+@router.post("/api/admin/oral-questions", response_model=OralQuestionRead)
+def admin_create_oral_question(payload: OralQuestionCreate, db: Session = Depends(get_db)):
+    return create_oral_question(db, payload)
+
+
+@router.patch("/api/admin/oral-questions/{question_id}", response_model=OralQuestionRead)
+def admin_update_oral_question(question_id: str, payload: OralQuestionUpdate, db: Session = Depends(get_db)):
+    question = update_oral_question(db, question_id, payload)
+    if question is None:
+        raise HTTPException(status_code=404, detail="question not found")
+    return question
+
+
+@router.delete("/api/admin/oral-questions/{question_id}")
+def admin_delete_oral_question(question_id: str, db: Session = Depends(get_db)) -> dict[str, bool]:
+    deleted = delete_oral_question(db, question_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="question not found")
     return {"ok": True}

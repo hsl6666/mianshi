@@ -123,6 +123,22 @@ class WrittenQuestion(Base):
     role_tags: Mapped[str] = mapped_column(String(400), default="")
     difficulty: Mapped[str] = mapped_column(String(40), default="medium")
     source: Mapped[str] = mapped_column(String(40), default="manual")
+    evaluation_points: Mapped[str] = mapped_column(Text, default="")
+    published: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+class OralQuestion(Base):
+    __tablename__ = "oral_questions"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    title: Mapped[str] = mapped_column(String(200), default="")
+    prompt: Mapped[str] = mapped_column(Text, default="")
+    role_tags: Mapped[str] = mapped_column(String(400), default="")
+    difficulty: Mapped[str] = mapped_column(String(40), default="medium")
+    source: Mapped[str] = mapped_column(String(40), default="manual")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
     published: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)

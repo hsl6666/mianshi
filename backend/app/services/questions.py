@@ -6,8 +6,10 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
-from app.models import WrittenQuestion
+from app.models import OralQuestion, WrittenQuestion
 from app.schemas import (
+    OralQuestionCreate,
+    OralQuestionUpdate,
     Question,
     QuestionGenerationRequest,
     QuestionOption,
@@ -32,9 +34,21 @@ def get_questions_for_role(db: Session, role: str) -> list[Question]:
     return [_to_question(item) for item in (matched or published)]
 
 
+def get_oral_questions_for_role(db: Session, role: str) -> list[OralQuestion]:
+    ensure_seed_oral_questions(db)
+    published = db.query(OralQuestion).filter(OralQuestion.published.is_(True)).order_by(OralQuestion.sort_order.asc(), OralQuestion.created_at.asc()).all()
+    matched = [item for item in published if _matches_role(item, role)]
+    return matched or published
+
+
 def list_questions(db: Session) -> list[WrittenQuestion]:
     ensure_seed_questions(db)
     return db.query(WrittenQuestion).order_by(WrittenQuestion.updated_at.desc()).all()
+
+
+def list_oral_questions(db: Session) -> list[OralQuestion]:
+    ensure_seed_oral_questions(db)
+    return db.query(OralQuestion).order_by(OralQuestion.sort_order.asc(), OralQuestion.updated_at.desc()).all()
 
 
 def create_question(db: Session, payload: WrittenQuestionCreate) -> WrittenQuestion:
@@ -58,6 +72,34 @@ def update_question(db: Session, question_id: str, payload: WrittenQuestionUpdat
 
 def delete_question(db: Session, question_id: str) -> bool:
     question = db.get(WrittenQuestion, question_id)
+    if question is None:
+        return False
+    db.delete(question)
+    db.commit()
+    return True
+
+
+def create_oral_question(db: Session, payload: OralQuestionCreate) -> OralQuestion:
+    question = OralQuestion(id=uuid4().hex, **payload.model_dump(mode="json"))
+    db.add(question)
+    db.commit()
+    db.refresh(question)
+    return question
+
+
+def update_oral_question(db: Session, question_id: str, payload: OralQuestionUpdate) -> OralQuestion | None:
+    question = db.get(OralQuestion, question_id)
+    if question is None:
+        return None
+    for key, value in payload.model_dump(exclude_unset=True, mode="json").items():
+        setattr(question, key, value)
+    db.commit()
+    db.refresh(question)
+    return question
+
+
+def delete_oral_question(db: Session, question_id: str) -> bool:
+    question = db.get(OralQuestion, question_id)
     if question is None:
         return False
     db.delete(question)
@@ -95,6 +137,25 @@ def ensure_seed_questions(db: Session) -> None:
         return
     for item in _seed_questions():
         db.add(WrittenQuestion(id=item.id, **_question_dump(item), role_tags="通用", difficulty="medium", source="seed", published=True))
+    db.commit()
+
+
+def ensure_seed_oral_questions(db: Session) -> None:
+    if db.query(OralQuestion).first() is not None:
+        return
+    for index, item in enumerate(_seed_oral_questions()):
+        db.add(
+            OralQuestion(
+                id=f"oral-seed-{index + 1}",
+                title=f"口试问题 {index + 1}",
+                prompt=item,
+                role_tags="通用",
+                difficulty="medium",
+                source="seed",
+                sort_order=index,
+                published=True,
+            )
+        )
     db.commit()
 
 
@@ -143,6 +204,16 @@ def _seed_questions() -> list[Question]:
                 "}\n"
             ),
         ),
+    ]
+
+
+def _seed_oral_questions() -> list[str]:
+    return [
+        "请用 1 分钟介绍你最近最能代表能力的项目。",
+        "请说明这个项目中最困难的技术问题、你的解决方案和最终结果。",
+        "如果线上接口 P95 延迟从 200ms 升到 2s，你会如何定位？",
+        "请描述一次你和团队成员产生明显分歧，并最终推进解决的经历。",
+        "如果入职后第一个月只能完成一件最能证明你价值的事，你会选择什么，为什么？",
     ]
 
 
@@ -273,7 +344,7 @@ def _normalize_generated_options(raw_options: object) -> list[dict[str, str]]:
     return normalized
 
 
-def _matches_role(question: WrittenQuestion, role: str) -> bool:
+def _matches_role(question: WrittenQuestion | OralQuestion, role: str) -> bool:
     tags = [item.strip().lower() for item in (question.role_tags or "").split(",") if item.strip()]
     if not tags or "通用" in tags or "all" in tags:
         return True
