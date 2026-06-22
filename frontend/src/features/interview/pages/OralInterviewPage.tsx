@@ -1,8 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Alert, Button, Empty, Progress, Space, Tag, message } from "antd";
-import { ArrowRightOutlined, AudioOutlined, CheckCircleOutlined, ReloadOutlined, StopOutlined } from "@ant-design/icons";
-import { createOrUpdateSession, fetchOralQuestions, fetchSession, resolveAssetUrl, saveOralSummary, uploadOralRecording } from "../api";
+import {
+  ArrowRightOutlined,
+  AudioOutlined,
+  CheckCircleOutlined,
+  ReloadOutlined,
+  StopOutlined,
+} from "@ant-design/icons";
+import { Alert, Button, Empty, message, Progress, Space, Tag } from "antd";
+import {
+  createOrUpdateSession,
+  deleteOralRecording,
+  fetchOralQuestions,
+  fetchSession,
+  resolveAssetUrl,
+  saveOralSummary,
+  uploadOralRecording,
+} from "../api";
 import { InterviewShell } from "../components/InterviewShell";
 import { getInterviewSessionId, loadProfile } from "../storage";
 import type { InterviewSession, OralQuestion, OralRecording } from "../types";
@@ -16,6 +30,7 @@ const DEFAULT_ORAL_QUESTIONS = [
 ];
 
 type RecordedAnswer = {
+  recordingId?: string;
   questionIndex: number;
   questionText: string;
   filename: string;
@@ -48,12 +63,15 @@ export default function OralInterviewPage() {
   const activeAnswer = recordings[currentIndex];
   const isCurrentRecording = recordingIndex === currentIndex;
   const canFinish = completedCount === questions.length && recordingIndex === null && uploadingIndex === null;
+  const recordingSupportIssue = getRecordingSupportIssue();
 
   useEffect(() => {
     void ensureSession();
     return () => {
       window.clearInterval(elapsedTimerRef.current);
-      recorderRef.current?.state === "recording" && recorderRef.current.stop();
+      if (recorderRef.current?.state === "recording") {
+        recorderRef.current.stop();
+      }
       streamRef.current?.getTracks().forEach((track) => track.stop());
       Object.values(recordings).forEach((item) => {
         if (item.localUrl) URL.revokeObjectURL(item.localUrl);
@@ -97,12 +115,16 @@ export default function OralInterviewPage() {
   }
 
   async function startRecording(index: number) {
-    if (!isRecordingSupported()) {
-      message.error("当前浏览器不支持录音，请使用 Chrome、Edge 或 Safari 新版本");
+    if (recordingSupportIssue) {
+      message.error(getRecordingSupportMessage(recordingSupportIssue));
       return;
     }
     if (recordingIndex !== null || uploadingIndex !== null) return;
 
+    await beginRecording(index);
+  }
+
+  async function beginRecording(index: number) {
     try {
       if (!session) await ensureSession();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -129,7 +151,10 @@ export default function OralInterviewPage() {
       }, 500);
     } catch (error) {
       streamRef.current?.getTracks().forEach((track) => track.stop());
-      if (error instanceof DOMException && ["NotAllowedError", "PermissionDeniedError"].includes(error.name)) {
+      if (
+        error instanceof DOMException &&
+        ["NotAllowedError", "PermissionDeniedError"].includes(error.name)
+      ) {
         message.error("浏览器拒绝了麦克风权限，请允许麦克风后重试");
       } else {
         message.error("录音启动失败，请确认麦克风设备可用");
@@ -195,6 +220,7 @@ export default function OralInterviewPage() {
         ...items,
         [answer.questionIndex]: {
           ...items[answer.questionIndex],
+          recordingId: uploaded?.id || answer.recordingId,
           filename: uploaded?.filename || answer.filename,
           uploadedUrl: uploaded?.url,
           durationSeconds: uploaded?.duration_seconds || answer.durationSeconds,
@@ -202,7 +228,9 @@ export default function OralInterviewPage() {
         },
       }));
       message.success(`第 ${answer.questionIndex + 1} 题录音已保存`);
-      setCurrentIndex((value) => (value === answer.questionIndex ? Math.min(answer.questionIndex + 1, questions.length - 1) : value));
+      setCurrentIndex((value) =>
+        value === answer.questionIndex ? Math.min(answer.questionIndex + 1, questions.length - 1) : value,
+      );
     } catch {
       message.error("录音已生成，但上传失败，请检查后端服务后重试上传");
     } finally {
@@ -212,7 +240,36 @@ export default function OralInterviewPage() {
 
   async function retryUpload(index: number) {
     const answer = recordings[index];
-    if (!answer?.blob) {
+    if (!answer) {
+      return;
+    }
+
+    if (answer.uploadedUrl) {
+      setUploadingIndex(index);
+      try {
+        const recordingId =
+          answer.recordingId || getLatestRecording(session?.oral_recordings || [], index)?.id;
+        if (recordingId) {
+          await deleteOralRecording(sessionId, recordingId);
+        }
+        setRecordings((items) => {
+          const next = { ...items };
+          const previous = next[index];
+          if (previous?.localUrl) URL.revokeObjectURL(previous.localUrl);
+          delete next[index];
+          return next;
+        });
+        message.success("原录音已删除，请重新录制");
+        await beginRecording(index);
+      } catch {
+        message.error("删除原录音失败，请确认后端服务可用");
+      } finally {
+        setUploadingIndex(null);
+      }
+      return;
+    }
+
+    if (!answer.blob) {
       message.warning("该题只有服务端录音记录，无需重新上传");
       return;
     }
@@ -257,7 +314,11 @@ export default function OralInterviewPage() {
   }
 
   return (
-    <InterviewShell current="oral" title="AI 口试" description="按固定问题逐题录音，系统保存候选人的原始录音文件用于后续复核。">
+    <InterviewShell
+      current="oral"
+      title="AI 口试"
+      description="按固定问题逐题录音，系统保存候选人的原始录音文件用于后续复核。"
+    >
       <section className="grid gap-5 xl:grid-cols-[330px_1fr]">
         <aside className="space-y-4">
           <div className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
@@ -267,7 +328,11 @@ export default function OralInterviewPage() {
                 {completedCount}/{questions.length}
               </Tag>
             </div>
-            <Progress percent={questions.length ? Math.round((completedCount / questions.length) * 100) : 0} strokeColor="#14532d" className="mt-3" />
+            <Progress
+              percent={questions.length ? Math.round((completedCount / questions.length) * 100) : 0}
+              strokeColor="#14532d"
+              className="mt-3"
+            />
             <Button
               type="primary"
               block
@@ -290,12 +355,20 @@ export default function OralInterviewPage() {
                   type="button"
                   onClick={() => setCurrentIndex(index)}
                   className={`mb-2 w-full rounded-lg border px-3 py-3 text-left transition last:mb-0 ${
-                    active ? "border-emerald-800 bg-emerald-50" : "border-stone-200 bg-white hover:bg-stone-50"
+                    active
+                      ? "border-emerald-800 bg-emerald-50"
+                      : "border-stone-200 bg-white hover:bg-stone-50"
                   }`}
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Question {index + 1}</span>
-                    {answer?.uploadedUrl ? <CheckCircleOutlined className="text-emerald-700" /> : <Tag>待录音</Tag>}
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
+                      Question {index + 1}
+                    </span>
+                    {answer?.uploadedUrl ? (
+                      <CheckCircleOutlined className="text-emerald-700" />
+                    ) : (
+                      <Tag>待录音</Tag>
+                    )}
                   </div>
                   <p className="mt-2 line-clamp-2 text-sm leading-6 text-stone-800">{question}</p>
                 </button>
@@ -314,12 +387,16 @@ export default function OralInterviewPage() {
               <div className="min-w-[150px] text-right">
                 {isCurrentRecording ? (
                   <>
-                    <div className="text-3xl font-semibold tabular-nums text-rose-700">{formatDuration(elapsed)}</div>
+                    <div className="text-3xl font-semibold tabular-nums text-rose-700">
+                      {formatDuration(elapsed)}
+                    </div>
                     <div className="mt-1 text-xs text-stone-500">录音中</div>
                   </>
                 ) : activeAnswer ? (
                   <>
-                    <div className="text-3xl font-semibold tabular-nums text-stone-950">{formatDuration(activeAnswer.durationSeconds)}</div>
+                    <div className="text-3xl font-semibold tabular-nums text-stone-950">
+                      {formatDuration(activeAnswer.durationSeconds)}
+                    </div>
                     <div className="mt-1 text-xs text-stone-500">已录制</div>
                   </>
                 ) : (
@@ -349,27 +426,43 @@ export default function OralInterviewPage() {
               )}
               <Button
                 icon={<ReloadOutlined />}
-                disabled={!activeAnswer?.blob || Boolean(activeAnswer.uploadedUrl) || uploadingIndex !== null}
+                disabled={!activeAnswer || recordingIndex !== null || uploadingIndex !== null || loading}
                 loading={uploadingIndex === currentIndex}
                 onClick={() => void retryUpload(currentIndex)}
               >
-                重试上传
+                {activeAnswer?.uploadedUrl ? "重新录制" : "重试上传"}
               </Button>
             </Space>
 
             {activeAnswer ? (
               <div className="mt-6 rounded-lg border border-stone-200 bg-stone-50 p-4">
                 <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <Tag color={activeAnswer.uploadedUrl ? "green" : "orange"}>{activeAnswer.uploadedUrl ? "已保存到数据库" : "待上传"}</Tag>
+                  <Tag color={activeAnswer.uploadedUrl ? "green" : "orange"}>
+                    {activeAnswer.uploadedUrl ? "已保存到数据库" : "待上传"}
+                  </Tag>
                   <span className="text-sm text-stone-500">{activeAnswer.filename}</span>
                 </div>
-                <audio controls src={activeAnswer.localUrl || resolveAssetUrl(activeAnswer.uploadedUrl || "")} className="w-full" />
+                <audio
+                  controls
+                  src={activeAnswer.localUrl || resolveAssetUrl(activeAnswer.uploadedUrl || "")}
+                  className="w-full"
+                />
               </div>
             ) : (
               <div className="mt-6">
                 <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前题目暂无录音" />
               </div>
             )}
+
+            {recordingSupportIssue === "insecure-context" ? (
+              <Alert
+                className="mt-6"
+                showIcon
+                type="warning"
+                message="当前页面不是安全上下文"
+                description="录音权限只允许在 https 或 localhost 下使用。若你是通过局域网 IP 打开的前端，请改为用 localhost 访问。"
+              />
+            ) : null}
           </div>
 
           <Alert
@@ -386,6 +479,7 @@ export default function OralInterviewPage() {
 
 function recordingToAnswer(item: OralRecording): RecordedAnswer {
   return {
+    recordingId: item.id,
     questionIndex: item.question_index,
     questionText: item.question_text,
     filename: item.filename,
@@ -401,8 +495,22 @@ function getLatestRecording(items: OralRecording[], questionIndex: number) {
     .sort((a, b) => new Date(b.created_at).valueOf() - new Date(a.created_at).valueOf())[0];
 }
 
-function isRecordingSupported() {
-  return typeof window !== "undefined" && typeof MediaRecorder !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia);
+function getRecordingSupportIssue() {
+  if (typeof window === "undefined") return "browser";
+  if (!window.isSecureContext) return "insecure-context";
+  if (typeof MediaRecorder === "undefined") return "media-recorder";
+  if (!navigator.mediaDevices?.getUserMedia) return "media-devices";
+  return "";
+}
+
+function getRecordingSupportMessage(issue: string) {
+  if (issue === "insecure-context") {
+    return "当前页面不是安全上下文，录音需要通过 localhost 或 https 打开";
+  }
+  if (issue === "media-recorder" || issue === "media-devices") {
+    return "当前浏览器不支持录音，请使用 Chrome、Edge 或 Safari 新版本";
+  }
+  return "当前浏览器不支持录音";
 }
 
 function getSupportedMimeType() {

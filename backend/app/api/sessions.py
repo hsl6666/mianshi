@@ -215,6 +215,19 @@ def get_oral_recording_audio(session_id: str, recording_id: str, db: Session = D
     return Response(content=recording.audio_data, media_type=recording.content_type)
 
 
+@router.delete("/api/sessions/{session_id}/oral-recordings/{recording_id}", status_code=204)
+def delete_oral_recording(session_id: str, recording_id: str, db: Session = Depends(get_db)) -> None:
+    recording = db.get(OralRecording, recording_id)
+    if recording is None or recording.session_id != session_id:
+        raise HTTPException(status_code=404, detail="recording not found")
+
+    file_path = Path(recording.file_path)
+    db.delete(recording)
+    db.commit()
+    if file_path.exists():
+        file_path.unlink(missing_ok=True)
+
+
 @router.post("/api/sessions/{session_id}/oral/start")
 async def start_oral_interview(
     session_id: str,

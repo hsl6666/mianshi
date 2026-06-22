@@ -1,8 +1,26 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import {
+  ArrowRightOutlined,
+  CameraOutlined,
+  CloseOutlined,
+  FileTextOutlined,
+  ReloadOutlined,
+  UploadOutlined,
+} from "@ant-design/icons";
+import {
+  Button,
+  DatePicker,
+  Input,
+  message,
+  Modal,
+  Select,
+  Space,
+  Tag,
+  Upload,
+  type UploadProps,
+} from "antd";
 import dayjs from "dayjs";
-import { Button, DatePicker, Input, Modal, Select, Space, Tag, Upload, message, type UploadProps } from "antd";
-import { ArrowRightOutlined, CameraOutlined, CloseOutlined, FileTextOutlined, PrinterOutlined, ReloadOutlined, UploadOutlined } from "@ant-design/icons";
 import {
   createOrUpdateSession,
   fetchSession,
@@ -11,8 +29,14 @@ import {
   uploadResumeAttachment,
 } from "../api";
 import PositionSelect from "../components/PositionSelect";
-import { emptyProfile, getInterviewSessionId, loadProfile, normalizeProfile, saveProfile } from "../storage";
-import type { CandidateProfile, EducationExperience, FamilyMember, InterviewSession, WorkExperience } from "../types";
+import { emptyProfile, loadProfile, normalizeProfile, resetInterviewSession, saveProfile } from "../storage";
+import type {
+  CandidateProfile,
+  EducationExperience,
+  FamilyMember,
+  InterviewSession,
+  WorkExperience,
+} from "../types";
 
 type TextFieldKey = {
   [K in keyof CandidateProfile]: CandidateProfile[K] extends string ? K : never;
@@ -24,9 +48,11 @@ const textFieldKeys = Object.keys(emptyProfile).filter(
 
 const tableCellClass = "h-[42px] border border-[#555] p-0 align-middle";
 const labelCellClass = `${tableCellClass} whitespace-nowrap bg-[#fbfbfb] text-center text-[15px] font-medium`;
-const sectionTitleClass = "h-[34px] border border-[#555] bg-[#fafafa] text-center text-[17px] font-semibold tracking-[0.18em]";
+const sectionTitleClass =
+  "h-[34px] border border-[#555] bg-[#fafafa] text-center text-[17px] font-semibold tracking-[0.18em]";
 const blankCellClass = "h-[38px] border border-[#555] p-0 align-middle";
-const controlClass = "!h-full !w-full !rounded-none !border-0 !bg-transparent !px-2 !text-[15px] !shadow-none";
+const controlClass =
+  "!h-full !w-full !rounded-none !border-0 !bg-transparent !px-2 !text-[15px] !shadow-none";
 const pickerClass = `${controlClass} [&_.ant-picker-input>input]:!text-[15px]`;
 const selectClass = `${controlClass} [&_.ant-select-selector]:!h-full [&_.ant-select-selector]:!bg-transparent [&_.ant-select-selection-item]:!leading-[40px]`;
 
@@ -35,8 +61,13 @@ export default function BasicInfoPage() {
   const [searchParams] = useSearchParams();
   const querySessionId = useMemo(() => searchParams.get("sessionId")?.trim() || "", [searchParams]);
   const isReadOnly = searchParams.get("readonly") === "1";
-  const sessionId = useMemo(() => (isReadOnly ? querySessionId : getInterviewSessionId()), [isReadOnly, querySessionId]);
-  const [profile, setProfile] = useState<CandidateProfile>(() => (isReadOnly ? normalizeProfile({}) : loadProfile(sessionId)));
+  const sessionId = useMemo(
+    () => (isReadOnly ? querySessionId : resetInterviewSession()),
+    [isReadOnly, querySessionId],
+  );
+  const [profile, setProfile] = useState<CandidateProfile>(() =>
+    isReadOnly ? normalizeProfile({}) : loadProfile(sessionId),
+  );
   const [session, setSession] = useState<InterviewSession | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -47,7 +78,8 @@ export default function BasicInfoPage() {
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const errors = validateProfile(profile);
   const parsedFields = session?.parsed_profile || {};
-  const hasParsedFields = !isReadOnly && Object.values(parsedFields).some(Boolean) && appliedParsedAt !== session?.updated_at;
+  const hasParsedFields =
+    !isReadOnly && Object.values(parsedFields).some(Boolean) && appliedParsedAt !== session?.updated_at;
 
   useEffect(() => {
     if (!isReadOnly) {
@@ -317,8 +349,12 @@ export default function BasicInfoPage() {
           <div className="mb-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="text-[15px] font-semibold text-slate-900">{isReadOnly ? "简历附件" : "简历上传"}</div>
-                <p className="mt-1 text-xs leading-5 text-slate-500">{isReadOnly ? "候选人提交过的附件资料" : "支持 PDF、Word、图片和文本文件"}</p>
+                <div className="text-[15px] font-semibold text-slate-900">
+                  {isReadOnly ? "简历附件" : "简历上传"}
+                </div>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  {isReadOnly ? "候选人提交过的附件资料" : "支持 PDF、Word、图片和文本文件"}
+                </p>
               </div>
               {isReadOnly ? null : (
                 <Upload {...uploadProps}>
@@ -387,10 +423,17 @@ export default function BasicInfoPage() {
                 <td className={tableCellClass}>{selectInput("gender", ["男", "女"])}</td>
                 <td className={labelCellClass}>年龄</td>
                 <td className={tableCellClass}>{textInput("age", "number")}</td>
-                <td className={`${tableCellClass} bg-[#fcfcfc] p-2 text-center text-sm text-[#777]`} rowSpan={6}>
+                <td
+                  className={`${tableCellClass} bg-[#fcfcfc] p-2 text-center text-sm text-[#777]`}
+                  rowSpan={6}
+                >
                   {profile.profile_photo_data_url ? (
                     <div className="relative h-full min-h-[168px] w-full overflow-hidden rounded-md bg-white p-1 shadow-[0_4px_12px_rgba(15,23,42,0.16)]">
-                      <img src={profile.profile_photo_data_url} alt="候选人照片" className="h-full min-h-[160px] w-full rounded object-cover" />
+                      <img
+                        src={profile.profile_photo_data_url}
+                        alt="候选人照片"
+                        className="h-full min-h-[160px] w-full rounded object-cover"
+                      />
                       {isReadOnly ? null : (
                         <Button
                           type="primary"
@@ -410,8 +453,15 @@ export default function BasicInfoPage() {
                       ) : (
                         <div className="flex flex-wrap items-center justify-center gap-1">
                           <label className="cursor-pointer">
-                            <input type="file" accept="image/*" className="hidden" onChange={handlePhotoFileChange} />
-                            <span className="inline-flex h-7 items-center rounded border border-slate-300 px-2 text-xs text-slate-700">上传照片</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={handlePhotoFileChange}
+                            />
+                            <span className="inline-flex h-7 items-center rounded border border-slate-300 px-2 text-xs text-slate-700">
+                              上传照片
+                            </span>
                           </label>
                           <Button size="small" icon={<CameraOutlined />} onClick={() => void startCamera()}>
                             开启摄像头
@@ -436,7 +486,9 @@ export default function BasicInfoPage() {
                 <td className={labelCellClass}>体重</td>
                 <td className={tableCellClass}>{textInput("weight", "number", "kg")}</td>
                 <td className={labelCellClass}>婚否</td>
-                <td className={tableCellClass}>{selectInput("marital_status", ["未婚", "已婚", "离异", "丧偶"])}</td>
+                <td className={tableCellClass}>
+                  {selectInput("marital_status", ["未婚", "已婚", "离异", "丧偶"])}
+                </td>
               </tr>
               <tr>
                 <td className={labelCellClass}>政治面貌</td>
@@ -448,7 +500,9 @@ export default function BasicInfoPage() {
               </tr>
               <tr>
                 <td className={labelCellClass}>文化程度</td>
-                <td className={tableCellClass}>{selectInput("education_level", ["高中 / 中专", "大专", "本科", "硕士", "博士及以上"])}</td>
+                <td className={tableCellClass}>
+                  {selectInput("education_level", ["高中 / 中专", "大专", "本科", "硕士", "博士及以上"])}
+                </td>
                 <td className={labelCellClass}>联系方式</td>
                 <td className={tableCellClass} colSpan={3}>
                   {textInput("phone", "tel")}
@@ -499,9 +553,17 @@ export default function BasicInfoPage() {
                   <td className={blankCellClass} colSpan={2}>
                     {plainValue(row.company, (value) => updateWorkExperience(index, "company", value))}
                   </td>
-                  <td className={blankCellClass}>{plainValue(row.salary, (value) => updateWorkExperience(index, "salary", value))}</td>
-                  <td className={blankCellClass}>{plainValue(row.position, (value) => updateWorkExperience(index, "position", value))}</td>
-                  <td className={blankCellClass}>{plainValue(row.leave_reason, (value) => updateWorkExperience(index, "leave_reason", value))}</td>
+                  <td className={blankCellClass}>
+                    {plainValue(row.salary, (value) => updateWorkExperience(index, "salary", value))}
+                  </td>
+                  <td className={blankCellClass}>
+                    {plainValue(row.position, (value) => updateWorkExperience(index, "position", value))}
+                  </td>
+                  <td className={blankCellClass}>
+                    {plainValue(row.leave_reason, (value) =>
+                      updateWorkExperience(index, "leave_reason", value),
+                    )}
+                  </td>
                 </tr>
               ))}
 
@@ -524,7 +586,9 @@ export default function BasicInfoPage() {
               {profile.education_experiences.map((row, index) => (
                 <tr className="h-[38px]" key={`education-${index}`}>
                   <td className={blankCellClass}>
-                    {dateValue(row.start_date, (value) => updateEducationExperience(index, "start_date", value))}
+                    {dateValue(row.start_date, (value) =>
+                      updateEducationExperience(index, "start_date", value),
+                    )}
                   </td>
                   <td className={blankCellClass}>
                     {dateValue(row.end_date, (value) => updateEducationExperience(index, "end_date", value))}
@@ -532,9 +596,13 @@ export default function BasicInfoPage() {
                   <td className={blankCellClass} colSpan={2}>
                     {plainValue(row.college, (value) => updateEducationExperience(index, "college", value))}
                   </td>
-                  <td className={blankCellClass}>{plainValue(row.major, (value) => updateEducationExperience(index, "major", value))}</td>
+                  <td className={blankCellClass}>
+                    {plainValue(row.major, (value) => updateEducationExperience(index, "major", value))}
+                  </td>
                   <td className={blankCellClass} colSpan={2}>
-                    {plainValue(row.certificate, (value) => updateEducationExperience(index, "certificate", value))}
+                    {plainValue(row.certificate, (value) =>
+                      updateEducationExperience(index, "certificate", value),
+                    )}
                   </td>
                 </tr>
               ))}
@@ -598,7 +666,13 @@ export default function BasicInfoPage() {
           <div className="mt-6 flex justify-center gap-3">
             {isReadOnly ? null : (
               <>
-                <Button htmlType="submit" type="primary" loading={saving} icon={<ArrowRightOutlined />} className="min-w-[108px] !rounded-full">
+                <Button
+                  htmlType="submit"
+                  type="primary"
+                  loading={saving}
+                  icon={<ArrowRightOutlined />}
+                  className="min-w-[108px] !rounded-full"
+                >
                   提交登记
                 </Button>
                 <Button icon={<ReloadOutlined />} onClick={resetForm} className="min-w-[108px] !rounded-full">
@@ -606,9 +680,9 @@ export default function BasicInfoPage() {
                 </Button>
               </>
             )}
-            <Button icon={<PrinterOutlined />} onClick={() => window.print()} className="min-w-[108px] !rounded-full">
+            {/* <Button icon={<PrinterOutlined />} onClick={() => window.print()} className="min-w-[108px] !rounded-full">
               打印表单
-            </Button>
+            </Button> */}
           </div>
         </form>
         <Modal
@@ -628,7 +702,13 @@ export default function BasicInfoPage() {
         >
           <p className="mb-2 text-xs text-slate-500">请先调整好角度与光线，再点击“拍摄并使用”。</p>
           <div className="overflow-hidden rounded border border-slate-200 bg-black">
-            <video ref={attachVideoStream} autoPlay playsInline muted className="h-[360px] w-full object-cover" />
+            <video
+              ref={attachVideoStream}
+              autoPlay
+              playsInline
+              muted
+              className="h-[360px] w-full object-cover"
+            />
           </div>
         </Modal>
       </section>
@@ -696,15 +776,25 @@ export default function BasicInfoPage() {
   }
 
   function plainValue(value: string, onChange: (value: string) => void) {
-    return <Input variant="borderless" value={value} readOnly={isReadOnly} onChange={(event) => onChange(event.target.value)} className={controlClass} />;
+    return (
+      <Input
+        variant="borderless"
+        value={value}
+        readOnly={isReadOnly}
+        onChange={(event) => onChange(event.target.value)}
+        className={controlClass}
+      />
+    );
   }
 }
 
 function validateProfile(profile: CandidateProfile) {
   const errors: Partial<Record<TextFieldKey, string>> = {};
-  if (profile.id_number && !/(^\d{15}$)|(^\d{17}[\dXx]$)/.test(profile.id_number)) errors.id_number = "身份证号格式不正确";
+  if (profile.id_number && !/(^\d{15}$)|(^\d{17}[\dXx]$)/.test(profile.id_number))
+    errors.id_number = "身份证号格式不正确";
   if (profile.phone && !/^1[3-9]\d{9}$/.test(profile.phone)) errors.phone = "手机号格式不正确";
-  if (profile.emergency_phone && !/^1[3-9]\d{9}$/.test(profile.emergency_phone)) errors.emergency_phone = "手机号格式不正确";
+  if (profile.emergency_phone && !/^1[3-9]\d{9}$/.test(profile.emergency_phone))
+    errors.emergency_phone = "手机号格式不正确";
   if (profile.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.email)) errors.email = "邮箱格式不正确";
   return errors;
 }

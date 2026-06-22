@@ -17,14 +17,14 @@ export default function CompletePage() {
         <Result
           status="success"
           title="提交成功"
-          subTitle="感谢参加本轮 AI 面试，我们将在三个工作日内通过邮件通知后续安排。"
+          subTitle="感谢参加本轮 AI 面试，我们将在三个工作日内通知后续安排。"
           extra={[
-            <Button key="results" onClick={() => navigate("/interview/results")}>
-              查看面试结果
-            </Button>,
-            <Button type="primary" key="restart" onClick={restart}>
-              开始新的候选人流程
-            </Button>,
+            // <Button key="results" onClick={() => navigate("/interview/results")}>
+            //   查看面试结果
+            // </Button>,
+            // <Button type="primary" key="restart" onClick={restart}>
+            //   开始新的候选人流程
+            // </Button>,
           ]}
         />
       </section>

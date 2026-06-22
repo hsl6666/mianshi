@@ -13,8 +13,8 @@ import type {
   Question,
   QuestionGenerationRequest,
   QuestionGenerationResponse,
-  WrittenQuestion,
   WrittenExamSubmission,
+  WrittenQuestion,
 } from "./types";
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8010";
@@ -64,6 +64,19 @@ export async function fetchInterviewResultDetail(sessionId: string) {
   return data;
 }
 
+export async function deleteInterviewResult(sessionId: string) {
+  await client.delete(`/api/interview-results/${sessionId}`);
+}
+
+export async function deleteAllInterviewResults() {
+  const { data } = await client.delete<{ deleted_count: number }>("/api/interview-results");
+  return data;
+}
+
+export async function deleteOralRecording(sessionId: string, recordingId: string) {
+  await client.delete(`/api/sessions/${sessionId}/oral-recordings/${recordingId}`);
+}
+
 export async function fetchQuestions(role: string) {
   const { data } = await client.get<Question[]>("/api/questions", { params: { role } });
   return data;
@@ -104,7 +117,9 @@ export async function fetchAdminWrittenQuestions() {
   return data;
 }
 
-export async function createAdminWrittenQuestion(payload: Omit<WrittenQuestion, "id" | "created_at" | "updated_at">) {
+export async function createAdminWrittenQuestion(
+  payload: Omit<WrittenQuestion, "id" | "created_at" | "updated_at">,
+) {
   const { data } = await client.post<WrittenQuestion>("/api/admin/written-questions", payload);
   return data;
 }
@@ -127,12 +142,17 @@ export async function fetchAdminOralQuestions() {
   return data;
 }
 
-export async function createAdminOralQuestion(payload: Omit<OralQuestion, "id" | "created_at" | "updated_at">) {
+export async function createAdminOralQuestion(
+  payload: Omit<OralQuestion, "id" | "created_at" | "updated_at">,
+) {
   const { data } = await client.post<OralQuestion>("/api/admin/oral-questions", payload);
   return data;
 }
 
-export async function updateAdminOralQuestion(questionId: string, payload: Partial<Omit<OralQuestion, "id" | "created_at" | "updated_at">>) {
+export async function updateAdminOralQuestion(
+  questionId: string,
+  payload: Partial<Omit<OralQuestion, "id" | "created_at" | "updated_at">>,
+) {
   const { data } = await client.patch<OralQuestion>(`/api/admin/oral-questions/${questionId}`, payload);
   return data;
 }
@@ -143,7 +163,11 @@ export async function deleteAdminOralQuestion(questionId: string) {
 }
 
 export async function generateAdminWrittenQuestions(payload: QuestionGenerationRequest) {
-  const { data } = await client.post<QuestionGenerationResponse>("/api/admin/written-questions/generate", payload, { timeout: 120_000 });
+  const { data } = await client.post<QuestionGenerationResponse>(
+    "/api/admin/written-questions/generate",
+    payload,
+    { timeout: 120_000 },
+  );
   return data;
 }
 
@@ -158,7 +182,10 @@ export async function updateAdminModelConfig(payload: LlmModelConfigUpdate) {
 }
 
 export async function submitWrittenExam(sessionId: string, payload: WrittenExamSubmission) {
-  const { data } = await client.post<InterviewSession>(`/api/sessions/${sessionId}/written-submission`, payload);
+  const { data } = await client.post<InterviewSession>(
+    `/api/sessions/${sessionId}/written-submission`,
+    payload,
+  );
   return data;
 }
 

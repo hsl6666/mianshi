@@ -1,22 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Alert,
-  Button,
-  Descriptions,
-  Divider,
-  Drawer,
-  Empty,
-  Progress,
-  Space,
-  Spin,
-  Table,
-  Tag,
-  Typography,
-  message,
-  type TableColumnsType,
-} from "antd";
-import {
   BarChartOutlined,
+  DeleteOutlined,
   EyeOutlined,
   FileSearchOutlined,
   ReloadOutlined,
@@ -24,8 +9,31 @@ import {
   SafetyCertificateOutlined,
   WarningOutlined,
 } from "@ant-design/icons";
+import {
+  Alert,
+  Button,
+  Descriptions,
+  Divider,
+  Drawer,
+  Empty,
+  message,
+  Modal,
+  Progress,
+  Space,
+  Spin,
+  Table,
+  type TableColumnsType,
+  Tag,
+  Typography,
+} from "antd";
 import dayjs from "dayjs";
-import { fetchInterviewResultDetail, fetchInterviewResults, resolveAssetUrl } from "../api";
+import {
+  deleteAllInterviewResults,
+  deleteInterviewResult,
+  fetchInterviewResultDetail,
+  fetchInterviewResults,
+  resolveAssetUrl,
+} from "../api";
 import { InterviewShell } from "../components/InterviewShell";
 import type { InterviewResultDetail, InterviewResultSummary, RiskLevel } from "../types";
 
@@ -60,6 +68,7 @@ export default function ResultsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detail, setDetail] = useState<InterviewResultDetail | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   const stats = useMemo(() => {
     const total = rows.length;
@@ -97,6 +106,55 @@ export default function ResultsPage() {
     }
   }
 
+  function confirmDelete(row: InterviewResultSummary) {
+    Modal.confirm({
+      title: "删除候选人数据",
+      content: `删除后将清空 ${row.name || "该候选人"} 的基础信息、笔试、口试、附件、抽帧和录音，且无法恢复。`,
+      okText: "删除",
+      okType: "danger",
+      cancelText: "取消",
+      centered: true,
+      async onOk() {
+        try {
+          await deleteInterviewResult(row.session_id);
+          setRows((items) => items.filter((item) => item.session_id !== row.session_id));
+          if (detail?.summary.session_id === row.session_id) {
+            setDrawerOpen(false);
+            setDetail(null);
+          }
+          message.success("候选人数据已删除");
+        } catch {
+          message.error("删除失败，请确认后端服务可用");
+        }
+      },
+    });
+  }
+
+  function confirmDeleteAll() {
+    Modal.confirm({
+      title: "删除全部候选人",
+      content: "删除后将清空所有候选人的基础信息、笔试、口试、附件、抽帧和录音，且无法恢复。",
+      okText: "删除全部",
+      okType: "danger",
+      cancelText: "取消",
+      centered: true,
+      async onOk() {
+        setDeletingAll(true);
+        try {
+          const result = await deleteAllInterviewResults();
+          setRows([]);
+          setDrawerOpen(false);
+          setDetail(null);
+          message.success(`已删除 ${result.deleted_count} 个候选人`);
+        } catch {
+          message.error("删除全部失败，请确认后端服务可用");
+        } finally {
+          setDeletingAll(false);
+        }
+      },
+    });
+  }
+
   const columns: TableColumnsType<InterviewResultSummary> = [
     {
       title: "候选人",
@@ -105,7 +163,10 @@ export default function ResultsPage() {
       width: 180,
       render: (name, row) => (
         <div>
-          <button className="text-left text-sm font-semibold text-stone-950 hover:text-emerald-800" onClick={() => void openDetail(row)}>
+          <button
+            className="text-left text-sm font-semibold text-stone-950 hover:text-emerald-800"
+            onClick={() => void openDetail(row)}
+          >
             {name}
           </button>
           <div className="mt-1 text-xs text-stone-500">{row.phone || row.email || "无联系方式"}</div>
@@ -172,32 +233,51 @@ export default function ResultsPage() {
       title: "状态",
       dataIndex: "status",
       width: 110,
-      render: (status) => <Tag color={status === "completed" ? "green" : "blue"}>{statusLabels[status] || status}</Tag>,
+      render: (status) => (
+        <Tag color={status === "completed" ? "green" : "blue"}>{statusLabels[status] || status}</Tag>
+      ),
     },
     {
       title: "更新时间",
       dataIndex: "updated_at",
       width: 170,
       sorter: (a, b) => dayjs(a.updated_at).valueOf() - dayjs(b.updated_at).valueOf(),
-      render: (value) => <span className="text-xs text-stone-500">{dayjs(value).format("YYYY-MM-DD HH:mm")}</span>,
+      render: (value) => (
+        <span className="text-xs text-stone-500">{dayjs(value).format("YYYY-MM-DD HH:mm")}</span>
+      ),
     },
     {
       title: "操作",
       fixed: "right",
-      width: 100,
+      width: 170,
       render: (_, row) => (
-        <Button type="link" icon={<EyeOutlined />} onClick={() => void openDetail(row)}>
-          详情
-        </Button>
+        <Space size={0}>
+          <Button type="link" icon={<EyeOutlined />} onClick={() => void openDetail(row)}>
+            详情
+          </Button>
+          <Button danger type="link" icon={<DeleteOutlined />} onClick={() => confirmDelete(row)}>
+            删除
+          </Button>
+        </Space>
       ),
     },
   ];
 
   return (
-    <InterviewShell current="done" title="面试结果看板" description="集中查看候选人的基础资料、笔试、口试和流程合规结果，点击详情查看成绩分析报告。">
+    <InterviewShell
+      current="done"
+      title="面试结果看板"
+      description="集中查看候选人的基础资料、笔试、口试和流程合规结果，点击详情查看成绩分析报告。"
+    >
       <section className="grid gap-4 md:grid-cols-4">
         <MetricCard icon={<FileSearchOutlined />} label="候选人数" value={stats.total} tone="slate" />
-        <MetricCard icon={<BarChartOutlined />} label="平均综合分" value={stats.average} tone="green" suffix="分" />
+        <MetricCard
+          icon={<BarChartOutlined />}
+          label="平均综合分"
+          value={stats.average}
+          tone="green"
+          suffix="分"
+        />
         <MetricCard icon={<RiseOutlined />} label="建议推进" value={stats.recommended} tone="emerald" />
         <MetricCard icon={<WarningOutlined />} label="高风险" value={stats.highRisk} tone="red" />
       </section>
@@ -208,9 +288,14 @@ export default function ResultsPage() {
             <h2 className="text-lg font-semibold text-stone-950">候选人结果表</h2>
             <p className="mt-1 text-sm text-stone-500">评分为 MVP 规则评分，可作为人工复核前的排序依据。</p>
           </div>
-          <Button icon={<ReloadOutlined />} onClick={() => void loadResults()}>
-            刷新
-          </Button>
+          <Space>
+            <Button danger icon={<DeleteOutlined />} loading={deletingAll} onClick={confirmDeleteAll}>
+              删除全部
+            </Button>
+            <Button icon={<ReloadOutlined />} onClick={() => void loadResults()}>
+              刷新
+            </Button>
+          </Space>
         </div>
         <Table
           rowKey="session_id"
@@ -309,7 +394,12 @@ function ReportDetail({ detail }: { detail: InterviewResultDetail }) {
             <p className="text-sm text-stone-500">{summary.role}</p>
           </div>
           <Space wrap>
-            <Button href={buildBasicInfoUrl(summary.session_id)} target="_blank" rel="noreferrer" icon={<FileSearchOutlined />}>
+            <Button
+              href={buildBasicInfoUrl(summary.session_id)}
+              target="_blank"
+              rel="noreferrer"
+              icon={<FileSearchOutlined />}
+            >
               查看基础信息
             </Button>
             <Tag color={risk.color}>{risk.label}</Tag>
@@ -324,15 +414,25 @@ function ReportDetail({ detail }: { detail: InterviewResultDetail }) {
           <Descriptions.Item label="摄像头抽帧">{summary.snapshots_count}</Descriptions.Item>
           <Descriptions.Item label="口试录音">{summary.recordings_count || 0}</Descriptions.Item>
           <Descriptions.Item label="QA 轮次">{summary.qa_count}</Descriptions.Item>
-          <Descriptions.Item label="更新时间">{dayjs(summary.updated_at).format("YYYY-MM-DD HH:mm")}</Descriptions.Item>
+          <Descriptions.Item label="更新时间">
+            {dayjs(summary.updated_at).format("YYYY-MM-DD HH:mm")}
+          </Descriptions.Item>
         </Descriptions>
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <ScoreBlock label="综合" value={scores.total_score} />
         <ScoreBlock label="资料" value={scores.profile_score} />
-        <ScoreBlock label="笔试" value={scores.written_score} actionHref={buildResultReviewUrl(summary.session_id, "written")} />
-        <ScoreBlock label="口试" value={scores.oral_score} actionHref={buildResultReviewUrl(summary.session_id, "oral")} />
+        <ScoreBlock
+          label="笔试"
+          value={scores.written_score}
+          actionHref={buildResultReviewUrl(summary.session_id, "written")}
+        />
+        <ScoreBlock
+          label="口试"
+          value={scores.oral_score}
+          actionHref={buildResultReviewUrl(summary.session_id, "oral")}
+        />
       </section>
 
       <section className="rounded-xl border border-stone-200 p-5">
@@ -356,7 +456,11 @@ function ReportDetail({ detail }: { detail: InterviewResultDetail }) {
 
       <section className="grid gap-4 lg:grid-cols-2">
         <ReportList title="主要优势" items={report.strengths} tone="green" />
-        <ReportList title="风险提示" items={report.risks.length ? report.risks : ["暂无明显风险。"]} tone="red" />
+        <ReportList
+          title="风险提示"
+          items={report.risks.length ? report.risks : ["暂无明显风险。"]}
+          tone="red"
+        />
       </section>
 
       <section className="rounded-xl border border-stone-200 p-5">
@@ -365,7 +469,9 @@ function ReportDetail({ detail }: { detail: InterviewResultDetail }) {
           <div className="space-y-4">
             {report.qa_pairs.map((item, index) => (
               <div key={`${item.at}-${index}`} className="rounded-lg bg-stone-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Question {index + 1}</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
+                  Question {index + 1}
+                </p>
                 <p className="mt-2 text-sm leading-6 text-stone-900">{item.question || "系统追问记录缺失"}</p>
                 {item.audio_url ? (
                   <div className="mt-3 border-l-2 border-emerald-800 pl-3">
@@ -376,7 +482,9 @@ function ReportDetail({ detail }: { detail: InterviewResultDetail }) {
                     <audio controls src={resolveAssetUrl(item.audio_url)} className="w-full" />
                   </div>
                 ) : (
-                  <p className="mt-3 border-l-2 border-emerald-800 pl-3 text-sm leading-6 text-stone-700">{item.answer}</p>
+                  <p className="mt-3 border-l-2 border-emerald-800 pl-3 text-sm leading-6 text-stone-700">
+                    {item.answer}
+                  </p>
                 )}
               </div>
             ))}
@@ -408,7 +516,15 @@ function ScoreBlock({ label, value, actionHref }: { label: string; value: number
       </div>
       <Progress percent={value} showInfo={false} strokeColor="#14532d" />
       {actionHref ? (
-        <Button href={actionHref} target="_blank" rel="noreferrer" type="link" size="small" icon={<EyeOutlined />} className="mt-3 !px-0">
+        <Button
+          href={actionHref}
+          target="_blank"
+          rel="noreferrer"
+          type="link"
+          size="small"
+          icon={<EyeOutlined />}
+          className="mt-3 !px-0"
+        >
           查看
         </Button>
       ) : null}
