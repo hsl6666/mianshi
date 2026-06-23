@@ -1,16 +1,7 @@
-import { Button, Result } from "antd";
-import { useNavigate } from "react-router-dom";
-import { resetInterviewSession } from "../storage";
+import { Result } from "antd";
 import { InterviewShell } from "../components/InterviewShell";
 
 export default function CompletePage() {
-  const navigate = useNavigate();
-
-  function restart() {
-    resetInterviewSession();
-    navigate("/interview/basic");
-  }
-
   return (
     <InterviewShell current="done" title="面试流程已完成" description="系统已保存基础信息、笔试提交、口试 QA 与摄像头随机抽帧。">
       <section className="rounded-xl border border-stone-200 bg-white p-8 shadow-sm">
