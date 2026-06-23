@@ -10,6 +10,7 @@ import {
 import { Alert, Button, Empty, message, Progress, Space, Tag } from "antd";
 import {
   createOrUpdateSession,
+  fetchInterviewConfig,
   deleteOralRecording,
   fetchOralQuestions,
   fetchSession,
@@ -19,7 +20,7 @@ import {
 } from "../api";
 import { InterviewShell } from "../components/InterviewShell";
 import { getInterviewSessionId, loadProfile } from "../storage";
-import type { InterviewSession, OralQuestion, OralRecording } from "../types";
+import type { InterviewFlowConfig, InterviewSession, OralQuestion, OralRecording } from "../types";
 
 const DEFAULT_ORAL_QUESTIONS = [
   "请用 1 分钟介绍你最近最能代表能力的项目。",
@@ -45,6 +46,7 @@ export default function OralInterviewPage() {
   const navigate = useNavigate();
   const sessionId = useMemo(() => getInterviewSessionId(), []);
   const [session, setSession] = useState<InterviewSession | null>(null);
+  const [flowConfig, setFlowConfig] = useState<InterviewFlowConfig | null>(null);
   const [questions, setQuestions] = useState<string[]>(DEFAULT_ORAL_QUESTIONS);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [recordings, setRecordings] = useState<Record<number, RecordedAnswer>>({});
@@ -86,12 +88,26 @@ export default function OralInterviewPage() {
   async function ensureSession() {
     setLoading(true);
     try {
+      const nextConfig = await fetchInterviewConfig();
+      setFlowConfig(nextConfig);
+      if (!nextConfig.oral_enabled) {
+        message.info("当前已关闭口试环节");
+        navigate("/interview/done", { replace: true });
+        return;
+      }
       const nextSession = await createOrUpdateSession(sessionId, loadProfile(sessionId));
       await loadOralQuestions(nextSession.role || String(nextSession.candidate_profile.role || ""));
       restoreRecordings(nextSession);
       setSession(nextSession);
     } catch {
       try {
+        const nextConfig = await fetchInterviewConfig();
+        setFlowConfig(nextConfig);
+        if (!nextConfig.oral_enabled) {
+          message.info("当前已关闭口试环节");
+          navigate("/interview/done", { replace: true });
+          return;
+        }
         const nextSession = await fetchSession(sessionId);
         await loadOralQuestions(nextSession.role || String(nextSession.candidate_profile.role || ""));
         restoreRecordings(nextSession);
@@ -318,6 +334,7 @@ export default function OralInterviewPage() {
       current="oral"
       title="AI 口试"
       description="按固定问题逐题录音，系统保存候选人的原始录音文件用于后续复核。"
+      oralEnabled={flowConfig?.oral_enabled ?? true}
     >
       <section className="grid gap-5 xl:grid-cols-[330px_1fr]">
         <aside className="space-y-4">

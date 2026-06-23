@@ -87,12 +87,13 @@ const routes: RouteObject[] = [
     children: [
       {
         index: true,
-        element: <Navigate replace to="talents" />,
+        element: <Navigate replace to="results" />,
+        HydrateFallback: ProgressBar,
       },
       {
-        path: "talents",
+        path: "results",
         lazy: async () => ({
-          Component: (await import("@/features/interview/admin/pages/TalentManagementPage")).default,
+          Component: (await import("@/features/interview/admin/pages/ResultsManagementPage")).default,
         }),
         HydrateFallback: ProgressBar,
       },
@@ -114,6 +115,13 @@ const routes: RouteObject[] = [
         path: "models",
         lazy: async () => ({
           Component: (await import("@/features/interview/admin/pages/ModelManagementPage")).default,
+        }),
+        HydrateFallback: ProgressBar,
+      },
+      {
+        path: "configs",
+        lazy: async () => ({
+          Component: (await import("@/features/interview/admin/pages/ConfigManagementPage")).default,
         }),
         HydrateFallback: ProgressBar,
       },

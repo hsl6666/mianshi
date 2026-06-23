@@ -230,6 +230,15 @@ class LlmModelConfigUpdate(BaseModel):
     clear_api_key: bool = False
 
 
+class InterviewFlowConfigRead(BaseModel):
+    oral_enabled: bool
+    updated_at: datetime
+
+
+class InterviewFlowConfigUpdate(BaseModel):
+    oral_enabled: bool = True
+
+
 class JobPositionCreate(BaseModel):
     name: str
     description: str = ""
@@ -294,3 +303,19 @@ class OralSummaryRequest(BaseModel):
     session_id: str
     qa: list[dict]
     ended_at: datetime
+
+
+class AssistantChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class AssistantChatRequest(BaseModel):
+    session_id: str
+    messages: list[AssistantChatMessage] = Field(default_factory=list)
+
+
+class AssistantChatResponse(BaseModel):
+    answer: str
+    sql_used: str = ""
+    warning: str = ""

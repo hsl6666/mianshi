@@ -198,6 +198,15 @@ export type LlmModelConfigUpdate = {
   clear_api_key?: boolean;
 };
 
+export type InterviewFlowConfig = {
+  oral_enabled: boolean;
+  updated_at: string;
+};
+
+export type InterviewFlowConfigUpdate = {
+  oral_enabled: boolean;
+};
+
 export type WrittenAnswers = Record<string, string | string[]>;
 
 export type WrittenExamSubmission = {
@@ -272,4 +281,17 @@ export type InterviewResultDetail = {
     }>;
     qa_pairs: ReportQaPair[];
   };
+};
+
+export type AssistantChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  sql_used?: string;
+  warning?: string;
+};
+
+export type AssistantChatResponse = {
+  answer: string;
+  sql_used: string;
+  warning: string;
 };

@@ -8,28 +8,11 @@ import {
   ReloadOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
-import {
-  Button,
-  DatePicker,
-  Input,
-  message,
-  Modal,
-  Select,
-  Space,
-  Tag,
-  Upload,
-  type UploadProps,
-} from "antd";
+import { Button, DatePicker, Input, message, Modal, QRCode, Select, Space, Tag } from "antd";
 import dayjs from "dayjs";
-import {
-  createOrUpdateSession,
-  fetchSession,
-  patchSession,
-  resolveAssetUrl,
-  uploadResumeAttachment,
-} from "../api";
+import { PUBLIC_BASE_URL, createOrUpdateSession, fetchSession, patchSession, resolveAssetUrl } from "../api";
 import PositionSelect from "../components/PositionSelect";
-import { emptyProfile, loadProfile, normalizeProfile, resetInterviewSession, saveProfile } from "../storage";
+import { emptyProfile, getBasicEntrySessionId, loadProfile, normalizeProfile, saveProfile } from "../storage";
 import type {
   CandidateProfile,
   EducationExperience,
@@ -62,7 +45,7 @@ export default function BasicInfoPage() {
   const querySessionId = useMemo(() => searchParams.get("sessionId")?.trim() || "", [searchParams]);
   const isReadOnly = searchParams.get("readonly") === "1";
   const sessionId = useMemo(
-    () => (isReadOnly ? querySessionId : resetInterviewSession()),
+    () => (isReadOnly ? querySessionId : getBasicEntrySessionId()),
     [isReadOnly, querySessionId],
   );
   const [profile, setProfile] = useState<CandidateProfile>(() =>
@@ -70,8 +53,8 @@ export default function BasicInfoPage() {
   );
   const [session, setSession] = useState<InterviewSession | null>(null);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
+  const [resumeUploadOpen, setResumeUploadOpen] = useState(false);
   const [appliedParsedAt, setAppliedParsedAt] = useState("");
   const saveTimer = useRef<number>();
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -80,6 +63,10 @@ export default function BasicInfoPage() {
   const parsedFields = session?.parsed_profile || {};
   const hasParsedFields =
     !isReadOnly && Object.values(parsedFields).some(Boolean) && appliedParsedAt !== session?.updated_at;
+  const mobileUploadUrl = useMemo(
+    () => `${PUBLIC_BASE_URL.replace(/\/$/, "")}/m/upload?sessionId=${encodeURIComponent(sessionId)}`,
+    [sessionId],
+  );
 
   useEffect(() => {
     if (!isReadOnly) {
@@ -269,29 +256,16 @@ export default function BasicInfoPage() {
     message.success("已填入未手动填写的识别字段");
   }
 
-  async function uploadResume(file: File) {
+  async function openResumeUploadModal() {
     if (isReadOnly) return;
-    setUploading(true);
     try {
-      await createOrUpdateSession(sessionId, profile);
-      const nextSession = await uploadResumeAttachment(sessionId, file);
+      const nextSession = await createOrUpdateSession(sessionId, profile);
       setSession(nextSession);
-      message.success("简历上传成功，系统已开始识别并回填");
+      setResumeUploadOpen(true);
     } catch {
-      message.error("简历上传失败，请确认后端服务可用");
-    } finally {
-      setUploading(false);
+      message.error("创建面试会话失败，请确认后端服务可用");
     }
   }
-
-  const uploadProps: UploadProps = {
-    accept: ".pdf,.txt,.doc,.docx,image/*",
-    showUploadList: false,
-    beforeUpload: (file) => {
-      void uploadResume(file);
-      return false;
-    },
-  };
 
   async function goNext() {
     if (isReadOnly) return;
@@ -350,18 +324,18 @@ export default function BasicInfoPage() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="text-[15px] font-semibold text-slate-900">
-                  {isReadOnly ? "简历附件" : "简历上传"}
+                  {isReadOnly ? "简历附件" : "手机扫码上传简历"}
                 </div>
                 <p className="mt-1 text-xs leading-5 text-slate-500">
-                  {isReadOnly ? "候选人提交过的附件资料" : "支持 PDF、Word、图片和文本文件"}
+                  {isReadOnly
+                    ? "候选人提交过的附件资料"
+                    : "扫码后在手机端打开上传页，支持 PDF、Word、图片和文本文件"}
                 </p>
               </div>
               {isReadOnly ? null : (
-                <Upload {...uploadProps}>
-                  <Button type="primary" icon={<UploadOutlined />} loading={uploading}>
-                    上传简历
-                  </Button>
-                </Upload>
+                <Button type="primary" icon={<UploadOutlined />} onClick={() => void openResumeUploadModal()}>
+                  手机扫码上传
+                </Button>
               )}
             </div>
             {session?.attachments.length ? (
@@ -685,6 +659,32 @@ export default function BasicInfoPage() {
             </Button> */}
           </div>
         </form>
+        <Modal
+          title="手机扫码上传简历"
+          open={resumeUploadOpen}
+          onCancel={() => setResumeUploadOpen(false)}
+          footer={null}
+          destroyOnClose
+          width={420}
+        >
+          <div className="flex flex-col items-center gap-4 py-2 text-center">
+            <QRCode value={mobileUploadUrl} size={220} bordered={false} />
+            <div className="space-y-1">
+              <div className="text-sm font-medium text-slate-900">请使用手机扫码打开简历上传页</div>
+              <p className="m-0 text-xs leading-5 text-slate-500">
+                候选人在手机端选择文件上传后，电脑端会自动刷新附件列表。
+              </p>
+            </div>
+            <a
+              href={mobileUploadUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="break-all text-xs text-sky-600"
+            >
+              {mobileUploadUrl}
+            </a>
+          </div>
+        </Modal>
         <Modal
           title="摄像头拍照"
           open={cameraActive}

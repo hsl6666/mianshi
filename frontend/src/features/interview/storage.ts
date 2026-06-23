@@ -1,5 +1,11 @@
 import dayjs from "dayjs";
-import type { CandidateProfile, EducationExperience, FamilyMember, WorkExperience, WrittenAnswers } from "./types";
+import type {
+  CandidateProfile,
+  EducationExperience,
+  FamilyMember,
+  WorkExperience,
+  WrittenAnswers,
+} from "./types";
 
 const SESSION_KEY = "ai-interview-session-id";
 const PROFILE_PREFIX = "ai-interview-profile:";
@@ -46,6 +52,13 @@ export function getInterviewSessionId() {
   const next = createSessionId();
   localStorage.setItem(SESSION_KEY, next);
   return next;
+}
+
+export function getBasicEntrySessionId() {
+  if (isReloadNavigation()) {
+    return getInterviewSessionId();
+  }
+  return resetInterviewSession();
 }
 
 export function resetInterviewSession() {
@@ -136,7 +149,21 @@ function createSessionId() {
   return `session-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function normalizeWorkRows(rows: Array<Partial<WorkExperience> & { start_month?: string; end_month?: string }> | undefined, count: number) {
+function isReloadNavigation() {
+  const navigationEntries = performance.getEntriesByType("navigation");
+  const navigationEntry = navigationEntries[0] as PerformanceNavigationTiming | undefined;
+  if (navigationEntry) {
+    return navigationEntry.type === "reload";
+  }
+
+  const legacyNavigation = performance.navigation;
+  return legacyNavigation?.type === 1;
+}
+
+function normalizeWorkRows(
+  rows: Array<Partial<WorkExperience> & { start_month?: string; end_month?: string }> | undefined,
+  count: number,
+) {
   const normalized = Array.isArray(rows)
     ? rows.slice(0, count).map((row) => ({
         start_date: row.start_date || row.start_month || "",

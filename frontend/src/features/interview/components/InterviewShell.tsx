@@ -6,16 +6,24 @@ const steps = [
   { key: "written", label: "技术笔试" },
   { key: "oral", label: "AI 口试" },
   { key: "done", label: "完成" },
-];
+] as const;
 
 type InterviewShellProps = PropsWithChildren<{
   current: "basic" | "written" | "oral" | "done";
   title: string;
   description: string;
+  oralEnabled?: boolean;
 }>;
 
-export function InterviewShell({ current, title, description, children }: InterviewShellProps) {
-  const currentIndex = steps.findIndex((step) => step.key === current);
+export function InterviewShell({
+  current,
+  title,
+  description,
+  oralEnabled = true,
+  children,
+}: InterviewShellProps) {
+  const visibleSteps = oralEnabled ? steps : steps.filter((step) => step.key !== "oral");
+  const currentIndex = visibleSteps.findIndex((step) => step.key === current);
 
   return (
     <main className="min-h-screen bg-[#f6f5f0] text-stone-950">
@@ -28,8 +36,12 @@ export function InterviewShell({ current, title, description, children }: Interv
             <h1 className="mt-3 text-3xl font-semibold tracking-normal text-stone-950">{title}</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-600">{description}</p>
           </div>
-          <nav className="grid grid-cols-4 gap-2 rounded-xl border border-stone-200 bg-white p-2 shadow-sm">
-            {steps.map((step, index) => {
+          <nav
+            className={`grid gap-2 rounded-xl border border-stone-200 bg-white p-2 shadow-sm ${
+              oralEnabled ? "grid-cols-4" : "grid-cols-3"
+            }`}
+          >
+            {visibleSteps.map((step, index) => {
               const active = step.key === current;
               const complete = index < currentIndex;
               return (

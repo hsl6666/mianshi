@@ -4,9 +4,11 @@ import {
   DeleteOutlined,
   EyeOutlined,
   FileSearchOutlined,
+  RobotOutlined,
   ReloadOutlined,
   RiseOutlined,
   SafetyCertificateOutlined,
+  SendOutlined,
   WarningOutlined,
 } from "@ant-design/icons";
 import {
@@ -16,9 +18,11 @@ import {
   Divider,
   Drawer,
   Empty,
+  Input,
   message,
   Modal,
   Progress,
+  Select,
   Space,
   Spin,
   Table,
@@ -28,6 +32,7 @@ import {
 } from "antd";
 import dayjs from "dayjs";
 import {
+  chatWithInterviewAssistant,
   deleteAllInterviewResults,
   deleteInterviewResult,
   fetchInterviewResultDetail,
@@ -35,7 +40,15 @@ import {
   resolveAssetUrl,
 } from "../api";
 import { InterviewShell } from "../components/InterviewShell";
-import type { InterviewResultDetail, InterviewResultSummary, RiskLevel } from "../types";
+import type {
+  AssistantChatMessage,
+  InterviewResultDetail,
+  InterviewResultSummary,
+  RiskLevel,
+} from "../types";
+
+const { TextArea } = Input;
+const ALL_CANDIDATES_VALUE = "__all__";
 
 const statusLabels: Record<string, string> = {
   draft: "待完善",
@@ -62,13 +75,24 @@ function buildResultReviewUrl(sessionId: string, type: "written" | "oral") {
   return `${baseUrl}/interview/results/${type}?${query.toString()}`;
 }
 
-export default function ResultsPage() {
+export function ResultsBoard() {
   const [rows, setRows] = useState<InterviewResultSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detail, setDetail] = useState<InterviewResultDetail | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantSending, setAssistantSending] = useState(false);
+  const [assistantSessionId, setAssistantSessionId] = useState("");
+  const [assistantDraft, setAssistantDraft] = useState("");
+  const [assistantMessages, setAssistantMessages] = useState<AssistantChatMessage[]>([
+    {
+      role: "assistant",
+      content:
+        "我是面试分析助手。你可以问我当前候选人的资料、成绩、风险点、项目经历摘要，也可以让我基于候选人库做只读数据查询和分析。",
+    },
+  ]);
 
   const stats = useMemo(() => {
     const total = rows.length;
@@ -77,6 +101,12 @@ export default function ResultsPage() {
     const highRisk = rows.filter((item) => item.risk_level === "high").length;
     return { total, average, recommended, highRisk };
   }, [rows]);
+
+  useEffect(() => {
+    if (!assistantSessionId && rows.length) {
+      setAssistantSessionId(ALL_CANDIDATES_VALUE);
+    }
+  }, [assistantSessionId, rows]);
 
   useEffect(() => {
     void loadResults();
@@ -94,6 +124,7 @@ export default function ResultsPage() {
   }
 
   async function openDetail(row: InterviewResultSummary) {
+    setAssistantSessionId((current) => (current === ALL_CANDIDATES_VALUE ? current : row.session_id));
     setDrawerOpen(true);
     setDetail(null);
     setDetailLoading(true);
@@ -103,6 +134,65 @@ export default function ResultsPage() {
       message.error("加载成绩分析报告失败");
     } finally {
       setDetailLoading(false);
+    }
+  }
+
+  function openAssistant() {
+    if (!rows.length) {
+      message.warning("暂无候选人数据，无法开启分析助手");
+      return;
+    }
+    setAssistantSessionId((current) => current || ALL_CANDIDATES_VALUE);
+    setAssistantOpen(true);
+  }
+
+  function handleAssistantCandidateChange(value: string) {
+    setAssistantSessionId(value);
+    setAssistantMessages([
+      {
+        role: "assistant",
+        content:
+          value === ALL_CANDIDATES_VALUE
+            ? "已切换为全部候选人模式。你可以让我基于全部人员数据做汇总、筛选、对比和分析。"
+            : "已切换候选人。你可以继续提问，我会基于当前候选人和候选人库回答。",
+      },
+    ]);
+  }
+
+  async function sendAssistantMessage() {
+    const content = assistantDraft.trim();
+    if (!content) return;
+    if (!assistantSessionId) {
+      message.warning("请先选择候选人");
+      return;
+    }
+
+    const nextMessages: AssistantChatMessage[] = [...assistantMessages, { role: "user", content }];
+    setAssistantMessages(nextMessages);
+    setAssistantDraft("");
+    setAssistantSending(true);
+    try {
+      const response = await chatWithInterviewAssistant(assistantSessionId, nextMessages);
+      setAssistantMessages((items) => [
+        ...items,
+        {
+          role: "assistant",
+          content: response.answer,
+          sql_used: response.sql_used,
+          warning: response.warning,
+        },
+      ]);
+    } catch (error) {
+      const detailMessage =
+        typeof error === "object" &&
+        error &&
+        "response" in error &&
+        typeof (error as { response?: { data?: { detail?: string } } }).response?.data?.detail === "string"
+          ? (error as { response?: { data?: { detail?: string } } }).response?.data?.detail
+          : "";
+      message.error(detailMessage || "智能体回答失败，请确认模型配置和后端服务可用");
+    } finally {
+      setAssistantSending(false);
     }
   }
 
@@ -264,11 +354,7 @@ export default function ResultsPage() {
   ];
 
   return (
-    <InterviewShell
-      current="done"
-      title="面试结果看板"
-      description="集中查看候选人的基础资料、笔试、口试和流程合规结果，点击详情查看成绩分析报告。"
-    >
+    <>
       <section className="grid gap-4 md:grid-cols-4">
         <MetricCard icon={<FileSearchOutlined />} label="候选人数" value={stats.total} tone="slate" />
         <MetricCard
@@ -325,6 +411,106 @@ export default function ResultsPage() {
           <Empty description="暂无报告数据" />
         )}
       </Drawer>
+
+      <Button
+        type="primary"
+        shape="circle"
+        size="large"
+        icon={<RobotOutlined />}
+        className="!fixed bottom-6 right-6 z-40 !h-14 !w-14 shadow-lg"
+        onClick={openAssistant}
+      />
+
+      <Modal
+        title="面试分析助手"
+        open={assistantOpen}
+        onCancel={() => setAssistantOpen(false)}
+        destroyOnClose={false}
+        width={720}
+        footer={null}
+      >
+        <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-[220px_1fr] md:items-center">
+            <span className="text-sm font-medium text-stone-700">当前候选人</span>
+            <Select
+              value={assistantSessionId || undefined}
+              placeholder="请选择候选人"
+              options={[
+                { value: ALL_CANDIDATES_VALUE, label: "全部候选人" },
+                ...rows.map((item) => ({
+                  value: item.session_id,
+                  label: `${item.name || "未命名"} / ${item.role || "未填写岗位"}`,
+                })),
+              ]}
+              onChange={handleAssistantCandidateChange}
+            />
+          </div>
+
+          <div className="h-[420px] overflow-y-auto rounded-xl border border-stone-200 bg-stone-50 p-4">
+            <div className="space-y-3">
+              {assistantMessages.map((item, index) => (
+                <div
+                  key={`${item.role}-${index}`}
+                  className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm ${
+                    item.role === "assistant"
+                      ? "mr-auto bg-white text-stone-800"
+                      : "ml-auto bg-emerald-900 text-emerald-50"
+                  }`}
+                >
+                  <div>{item.content}</div>
+                  {item.sql_used ? (
+                    <div className="mt-2 rounded-lg bg-stone-100 px-3 py-2 font-mono text-[11px] leading-5 text-stone-600">
+                      SQL: {item.sql_used}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+              {assistantSending ? (
+                <div className="mr-auto max-w-[88%] rounded-2xl bg-white px-4 py-3 text-sm text-stone-500 shadow-sm">
+                  正在分析...
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <TextArea
+              value={assistantDraft}
+              onChange={(event) => setAssistantDraft(event.target.value)}
+              rows={4}
+              placeholder="例如：总结当前候选人的优势和风险；对比当前候选人与同岗位候选人的综合分、学历和项目背景。"
+              onPressEnter={(event) => {
+                if (!event.shiftKey) {
+                  event.preventDefault();
+                  void sendAssistantMessage();
+                }
+              }}
+            />
+            <div className="flex justify-end">
+              <Button
+                type="primary"
+                icon={<SendOutlined />}
+                loading={assistantSending}
+                onClick={() => void sendAssistantMessage()}
+              >
+                发送
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Modal>
+    </>
+  );
+}
+
+export default function ResultsPage() {
+  return (
+    <InterviewShell
+      current="done"
+      title="面试结果看板"
+      description="集中查看候选人的基础资料、笔试、口试和流程合规结果，点击详情查看成绩分析报告。"
+    >
+      <ResultsBoard />
     </InterviewShell>
   );
 }

@@ -21,6 +21,7 @@ from app.schemas import (
     WrittenExamSubmission,
 )
 from app.services.interview_graph import InterviewInput, generate_interview_reply
+from app.services.interview_config import get_or_create_interview_config
 from app.services.resume_parser import extract_text_from_file, merge_parsed_profile
 from app.services.serializers import session_to_read
 
@@ -122,7 +123,8 @@ def save_written_submission(
     db: Session = Depends(get_db),
 ) -> SessionRead:
     session = _get_session_or_404(session_id, db)
-    session.status = "written_submitted"
+    flow_config = get_or_create_interview_config(db)
+    session.status = "written_submitted" if flow_config.oral_enabled else "completed"
     session.written_submission = payload.model_dump(mode="json")
     db.commit()
     db.refresh(session)
@@ -178,6 +180,9 @@ async def upload_oral_recording(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ) -> SessionRead:
+    flow_config = get_or_create_interview_config(db)
+    if not flow_config.oral_enabled:
+        raise HTTPException(status_code=400, detail="oral interview disabled")
     settings = get_settings()
     session = _get_session_or_404(session_id, db)
     recording_dir = settings.oral_recordings_dir / session_id
@@ -236,6 +241,9 @@ async def start_oral_interview(
 ):
     if payload.session_id != session_id:
         raise HTTPException(status_code=400, detail="session id mismatch")
+    flow_config = get_or_create_interview_config(db)
+    if not flow_config.oral_enabled:
+        raise HTTPException(status_code=400, detail="oral interview disabled")
     session = _get_session_or_404(session_id, db)
     text, stage = await generate_interview_reply(
         InterviewInput(
@@ -259,6 +267,9 @@ async def respond_oral_interview(
 ):
     if payload.session_id != session_id:
         raise HTTPException(status_code=400, detail="session id mismatch")
+    flow_config = get_or_create_interview_config(db)
+    if not flow_config.oral_enabled:
+        raise HTTPException(status_code=400, detail="oral interview disabled")
     session = _get_session_or_404(session_id, db)
     db.add(Transcript(session_id=session_id, speaker="user", text=payload.text, event_type="completed"))
     db.flush()
@@ -284,6 +295,9 @@ def save_oral_summary(
 ) -> SessionRead:
     if payload.session_id != session_id:
         raise HTTPException(status_code=400, detail="session id mismatch")
+    flow_config = get_or_create_interview_config(db)
+    if not flow_config.oral_enabled:
+        raise HTTPException(status_code=400, detail="oral interview disabled")
     session = _get_session_or_404(session_id, db)
     session.status = "completed"
     session.oral_summary = payload.model_dump(mode="json")
@@ -301,7 +315,7 @@ def mobile_upload_page(sessionId: str) -> HTMLResponse:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>上传面试附件</title>
+  <title>手机上传简历</title>
   <style>
     body {{ margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f7f7f4; color: #18181b; }}
     main {{ max-width: 480px; margin: 0 auto; padding: 32px 20px; }}
@@ -317,9 +331,9 @@ def mobile_upload_page(sessionId: str) -> HTMLResponse:
 <body>
   <main>
     <section>
-      <h1>上传简历/附件</h1>
-      <p>请上传 PDF、图片或文本文件。上传完成后，电脑端表单会自动识别并提示回填。</p>
-      <input id="file" type="file" accept=".pdf,image/*,.txt" />
+      <h1>上传简历</h1>
+      <p>请在手机上选择简历文件上传。上传完成后，电脑端表单会自动刷新并继续识别回填。</p>
+      <input id="file" type="file" accept=".pdf,.doc,.docx,image/*,.txt" />
       <button id="submit">上传</button>
       <div id="status"></div>
     </section>
@@ -336,7 +350,7 @@ def mobile_upload_page(sessionId: str) -> HTMLResponse:
       form.append("file", file);
       document.getElementById("status").textContent = "上传中...";
       const res = await fetch(`/api/sessions/${{sessionId}}/attachments`, {{ method: "POST", body: form }});
-      document.getElementById("status").textContent = res.ok ? "上传成功，可以回到电脑端继续" : "上传失败，请重试";
+      document.getElementById("status").textContent = res.ok ? "上传完成，可以回到电脑端继续" : "上传失败，请重试";
     }});
   </script>
 </body>

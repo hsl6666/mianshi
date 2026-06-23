@@ -1,30 +1,41 @@
 import { useEffect, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
+  BarChartOutlined,
   FileTextOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   RobotOutlined,
+  SettingOutlined,
   SolutionOutlined,
-  UserOutlined,
 } from "@ant-design/icons";
-import { Button, Layout, Menu, Space, theme, type MenuProps } from "antd";
+import { Button, Layout, Menu, type MenuProps, Space, theme } from "antd";
 import { ROUTE_PATHS } from "@/constants/common";
 
 const { Header, Sider, Content } = Layout;
+const settingsMenuKey = "system-settings";
 
 const menuItems: MenuProps["items"] = [
-  { key: ROUTE_PATHS.adminTalents, icon: <UserOutlined />, label: "人才管理" },
+  { key: ROUTE_PATHS.adminResults, icon: <BarChartOutlined />, label: "面试结果" },
   { key: ROUTE_PATHS.adminPositions, icon: <SolutionOutlined />, label: "岗位管理" },
   { key: ROUTE_PATHS.adminQuestions, icon: <FileTextOutlined />, label: "笔试管理" },
-  { key: ROUTE_PATHS.adminModels, icon: <RobotOutlined />, label: "模型管理" },
+  {
+    key: settingsMenuKey,
+    icon: <SettingOutlined />,
+    label: "系统配置",
+    children: [
+      { key: ROUTE_PATHS.adminModels, icon: <RobotOutlined />, label: "模型管理" },
+      { key: ROUTE_PATHS.adminConfigs, icon: <SettingOutlined />, label: "配置管理" },
+    ],
+  },
 ];
 
 const menuKeys = [
-  ROUTE_PATHS.adminTalents,
+  ROUTE_PATHS.adminResults,
   ROUTE_PATHS.adminPositions,
   ROUTE_PATHS.adminQuestions,
   ROUTE_PATHS.adminModels,
+  ROUTE_PATHS.adminConfigs,
 ];
 
 export default function AdminLayout() {
@@ -35,7 +46,7 @@ export default function AdminLayout() {
     token: { colorBgContainer, borderRadiusLG },
   } = theme.useToken();
 
-  const selectedKey = menuKeys.includes(location.pathname) ? location.pathname : ROUTE_PATHS.adminTalents;
+  const selectedKey = menuKeys.includes(location.pathname) ? location.pathname : ROUTE_PATHS.adminResults;
 
   useEffect(() => {
     const root = document.getElementById("root");
@@ -73,6 +84,7 @@ export default function AdminLayout() {
           theme="dark"
           mode="inline"
           selectedKeys={[selectedKey]}
+          defaultOpenKeys={[settingsMenuKey]}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
         />

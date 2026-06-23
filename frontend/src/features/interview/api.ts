@@ -1,9 +1,13 @@
 import axios from "axios";
 import type {
   CandidateProfile,
+  AssistantChatMessage,
+  AssistantChatResponse,
   InterviewResultDetail,
   InterviewResultSummary,
   InterviewSession,
+  InterviewFlowConfig,
+  InterviewFlowConfigUpdate,
   JobPosition,
   JobPositionCreate,
   JobPositionUpdate,
@@ -61,6 +65,14 @@ export async function fetchInterviewResults() {
 
 export async function fetchInterviewResultDetail(sessionId: string) {
   const { data } = await client.get<InterviewResultDetail>(`/api/interview-results/${sessionId}`);
+  return data;
+}
+
+export async function chatWithInterviewAssistant(sessionId: string, messages: AssistantChatMessage[]) {
+  const { data } = await client.post<AssistantChatResponse>("/api/admin/interview-assistant/chat", {
+    session_id: sessionId,
+    messages: messages.map((item) => ({ role: item.role, content: item.content })),
+  });
   return data;
 }
 
@@ -178,6 +190,21 @@ export async function fetchAdminModelConfig() {
 
 export async function updateAdminModelConfig(payload: LlmModelConfigUpdate) {
   const { data } = await client.put<LlmModelConfig>("/api/admin/model-config", payload);
+  return data;
+}
+
+export async function fetchInterviewConfig() {
+  const { data } = await client.get<InterviewFlowConfig>("/api/interview-config");
+  return data;
+}
+
+export async function fetchAdminInterviewConfig() {
+  const { data } = await client.get<InterviewFlowConfig>("/api/admin/interview-config");
+  return data;
+}
+
+export async function updateAdminInterviewConfig(payload: InterviewFlowConfigUpdate) {
+  const { data } = await client.put<InterviewFlowConfig>("/api/admin/interview-config", payload);
   return data;
 }
 

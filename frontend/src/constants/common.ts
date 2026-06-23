@@ -5,8 +5,10 @@ export const ROUTE_PATHS = {
   echartsDemo: "/echarts-demo",
   interviewBasic: "/interview/basic",
   admin: "/admin",
-  adminTalents: "/admin/talents",
+  adminResults: "/admin/results",
   adminQuestions: "/admin/questions",
   adminModels: "/admin/models",
   adminPositions: "/admin/positions",
+  adminConfigs: "/admin/configs",
+  adminSettings: "/admin/settings",
 };
