@@ -671,18 +671,9 @@ export default function BasicInfoPage() {
             <QRCode value={mobileUploadUrl} size={220} bordered={false} />
             <div className="space-y-1">
               <div className="text-sm font-medium text-slate-900">请使用手机扫码打开简历上传页</div>
-              <p className="m-0 text-xs leading-5 text-slate-500">
-                候选人在手机端选择文件上传后，电脑端会自动刷新附件列表。
-              </p>
+             
             </div>
-            <a
-              href={mobileUploadUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="break-all text-xs text-sky-600"
-            >
-              {mobileUploadUrl}
-            </a>
+          
           </div>
         </Modal>
         <Modal
