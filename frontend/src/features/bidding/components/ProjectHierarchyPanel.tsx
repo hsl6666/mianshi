@@ -335,6 +335,21 @@ export default function ProjectHierarchyPanel({
               );
             },
           },
+          {
+            title: "反馈真实分数",
+            key: "feedback_final_score",
+            width: 116,
+            render: () => {
+              const score = selectedCompany?.company.final_score;
+              return score == null ? (
+                <span className="text-gray-400">-</span>
+              ) : (
+                <span className="font-medium text-emerald-600">
+                  {Number.isInteger(score) ? String(score) : score.toFixed(2).replace(/(\.\d)0$/, "$1")}
+                </span>
+              );
+            },
+          },
         ]
       : []),
     {

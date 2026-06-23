@@ -30,6 +30,7 @@ const F = THIRD_PARTY_BIDDING_FIELDS;
 export async function fetchProjects(params: {
   page?: number;
   page_size?: number;
+  all_items?: boolean;
   keyword?: string;
   status?: string;
   owner?: string;

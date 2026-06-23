@@ -85,7 +85,7 @@ def list_project_tree(
     db: Session,
     owner: str | None,
     page: int,
-    page_size: int,
+    page_size: int | None,
     keyword: str | None,
     status: ProjectStatus | None = None,
 ) -> tuple[list[BiddingProjectGroup], int]:
@@ -132,15 +132,11 @@ def list_project_tree(
         )
     )
 
-    groups = (
-        db.scalars(
-            query.order_by(BiddingProjectGroup.bid_opening_at.desc(), BiddingProjectGroup.id.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-        )
-        .unique()
-        .all()
-    )
+    ordered_query = query.order_by(BiddingProjectGroup.bid_opening_at.desc(), BiddingProjectGroup.id.desc())
+    if page_size is not None:
+        ordered_query = ordered_query.offset((page - 1) * page_size).limit(page_size)
+
+    groups = db.scalars(ordered_query).unique().all()
 
     now = china_now()
     for group in groups:

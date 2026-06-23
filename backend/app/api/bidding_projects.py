@@ -167,6 +167,7 @@ def _to_detail(project: BiddingProject) -> ProjectDetail:
 def list_bidding_projects(
     page: int = 1,
     page_size: int = 10,
+    all_items: bool = Query(default=False, alias="all_items"),
     keyword: Optional[str] = None,
     status: Optional[ProjectStatus] = None,
     owner: Optional[str] = None,
@@ -174,18 +175,18 @@ def list_bidding_projects(
     current_user: CurrentUser = Depends(get_current_user),
 ) -> PaginatedProjectTree:
     page = max(page, 1)
-    page_size = min(max(page_size, 1), 50)
+    resolved_page_size = None if all_items else min(max(page_size, 1), 50)
     owner_filter = current_user.owner_filter
     if current_user.is_super_admin:
         owner_filter = owner.strip() if owner and owner.strip() else None
     rows, total = service.list_project_tree(
-        db, owner_filter, page, page_size, keyword, status
+        db, owner_filter, page, resolved_page_size, keyword, status
     )
     return PaginatedProjectTree(
         items=[_to_group_tree_item(row) for row in rows],
         total=total,
         page=page,
-        page_size=page_size,
+        page_size=len(rows) if all_items else resolved_page_size,
     )
 
 

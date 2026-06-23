@@ -11,10 +11,8 @@ import {
   Typography,
   message,
 } from "antd";
-import { useNavigate } from "react-router-dom";
 import { fetchUsers, type UserItem } from "@/api/auth";
-import { ROUTE_PATHS } from "@/constants/common";
-import { FileSearchOutlined, PlusOutlined } from "@ant-design/icons";
+import { PlusOutlined } from "@ant-design/icons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { usePermission } from "@/hooks/usePermission";
 import { analyzeThirdPartySubmissionFile, uploadThirdPartyProjectBidFile } from "@/api/wangjun";
@@ -89,7 +87,6 @@ function getGroupTenderFile(group: BiddingProjectGroupTreeItem) {
 }
 
 export default function ProjectListPage() {
-  const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { can, isSuperAdmin } = usePermission();
   const biddingAccess: BiddingAccess = {
@@ -139,8 +136,9 @@ export default function ProjectListPage() {
     setLoading(true);
     try {
       const data = await fetchProjects({
-        page,
-        page_size: pageSize,
+        page: isMobile ? page : 1,
+        page_size: isMobile ? pageSize : undefined,
+        all_items: !isMobile,
         keyword: keyword || undefined,
         status: statusFilter || undefined,
         owner: isSuperAdmin && ownerFilter ? ownerFilter : undefined,
@@ -152,7 +150,7 @@ export default function ProjectListPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, keyword, statusFilter, ownerFilter, isSuperAdmin]);
+  }, [isMobile, page, pageSize, keyword, statusFilter, ownerFilter, isSuperAdmin]);
 
   useEffect(() => {
     loadList();
@@ -945,7 +943,6 @@ export default function ProjectListPage() {
               analyzingVersionIds={analyzingVersionIds}
               onRefresh={loadList}
             />
-            {paginationNode}
           </>
         )}
       </Card>
