@@ -1,118 +1,179 @@
 import { createBrowserRouter, Navigate, type RouteObject } from "react-router-dom";
 import { ProgressBar } from "@/components/ProgressBar";
-import { echartsDemoRoute } from "./echarts-demo";
-import { landingRoute } from "./landing";
+import PermissionRoute from "@/components/PermissionRoute";
+import ProtectedRoute from "@/components/ProtectedRoute";
 import { ROUTE_PATHS } from "@/constants/common";
 
 const routes: RouteObject[] = [
   {
-    path: "/interview",
-    children: [
-      {
-        index: true,
-        element: <Navigate replace to="basic" />,
-      },
-      {
-        path: "basic",
-        lazy: async () => ({
-          Component: (await import("@/features/interview/pages/BasicInfoPage")).default,
-        }),
-        HydrateFallback: ProgressBar,
-      },
-      {
-        path: "written",
-        lazy: async () => ({
-          Component: (await import("@/features/interview/pages/WrittenExamPage")).default,
-        }),
-        HydrateFallback: ProgressBar,
-      },
-      {
-        path: "oral",
-        lazy: async () => ({
-          Component: (await import("@/features/interview/pages/OralInterviewPage")).default,
-        }),
-        HydrateFallback: ProgressBar,
-      },
-      {
-        path: "done",
-        lazy: async () => ({
-          Component: (await import("@/features/interview/pages/CompletePage")).default,
-        }),
-        HydrateFallback: ProgressBar,
-      },
-      {
-        path: "results",
-        lazy: async () => ({
-          Component: (await import("@/features/interview/pages/ResultsPage")).default,
-        }),
-        HydrateFallback: ProgressBar,
-      },
-    ],
+    path: ROUTE_PATHS.login,
+    lazy: async () => ({
+      Component: (await import("@/pages/Login")).default,
+    }),
+    HydrateFallback: ProgressBar,
+  },
+  {
+    path: ROUTE_PATHS.technicalReport2,
+    lazy: async () => ({
+      Component: (await import("@/features/bidding/components/TechnicalReportPage2")).default,
+    }),
+    HydrateFallback: ProgressBar,
+    handle: {
+      title: "技术标评审修稿报告",
+    },
   },
   {
     path: "/",
-    lazy: async () => ({
-      Component: (await import("@/layouts")).default,
-    }),
+    lazy: async () => {
+      const { default: Layout } = await import("@/layouts");
+      const ProtectedLayout = () => (
+        <ProtectedRoute>
+          <Layout />
+        </ProtectedRoute>
+      );
+      return { Component: ProtectedLayout };
+    },
     HydrateFallback: ProgressBar,
     children: [
       {
         index: true,
-        element: <Navigate replace to={ROUTE_PATHS.interviewBasic} />,
-      },
-      landingRoute,
-      echartsDemoRoute,
-    ],
-  },
-  {
-    path: "/backend",
-    lazy: async () => ({
-      Component: (await import("@/layouts/backendLayout")).default,
-    }),
-    HydrateFallback: ProgressBar,
-    children: [
-      {
-        index: true,
-        element: <Navigate replace to="./landing" />,
+        element: <Navigate replace to={ROUTE_PATHS.biddingProjects} />,
       },
       {
-        path: "landing",
-        lazy: async () => ({
-          Component: (await import("@/pages/Landing")).default,
-        }),
+        path: ROUTE_PATHS.workbench.slice(1),
+        element: <Navigate replace to={ROUTE_PATHS.dashboard} />,
+      },
+      {
+        path: ROUTE_PATHS.dashboard.slice(1),
+        lazy: async () => {
+          const { default: Page } = await import("@/features/bidding/pages/WorkbenchPage");
+          const Component = () => (
+            <PermissionRoute module="menus" action="dashboard">
+              <PermissionRoute module="bidding" action="view">
+                <Page />
+              </PermissionRoute>
+            </PermissionRoute>
+          );
+          return { Component };
+        },
         HydrateFallback: ProgressBar,
         handle: {
-          title: "首页",
+          title: "Dashboard",
         },
       },
       {
-        path: "echarts-demo",
-        lazy: async () => ({
-          Component: (await import("@/pages/EchartsDemo/Layout")).default,
-        }),
+        path: ROUTE_PATHS.biddingProjects.slice(1),
+        lazy: async () => {
+          const { default: Page } = await import("@/features/bidding/pages/ProjectListPage");
+          const Component = () => (
+            <PermissionRoute module="menus" action="bidding_projects">
+              <PermissionRoute module="bidding" action="view">
+                <Page />
+              </PermissionRoute>
+            </PermissionRoute>
+          );
+          return { Component };
+        },
         HydrateFallback: ProgressBar,
         handle: {
-          title: "Echarts Demo",
+          title: "招投标项目",
         },
       },
       {
-        path: "tabs-demo",
+        path: ROUTE_PATHS.rechargeConsole.slice(1),
+        lazy: async () => {
+          const { default: Page } = await import("@/pages/RechargeConsole");
+          const Component = () => (
+            <PermissionRoute module="menus" action="recharge_console">
+              <PermissionRoute module="users" action="view">
+                <Page />
+              </PermissionRoute>
+            </PermissionRoute>
+          );
+          return { Component };
+        },
+        HydrateFallback: ProgressBar,
+        handle: {
+          title: "充值控制台",
+        },
+      },
+      {
+        path: ROUTE_PATHS.technicalReport.slice(1),
         lazy: async () => ({
-          Component: (await import("@/pages/EchartsDemo/Layout")).default,
+          Component: (await import("@/features/bidding/components/TechnicalReportPage")).default,
         }),
         HydrateFallback: ProgressBar,
         handle: {
-          title: "Tabs Demo",
+          title: "技术评审报告",
         },
+      },
+      {
+        path: ROUTE_PATHS.users.slice(1),
+        lazy: async () => {
+          const { default: Page } = await import("@/pages/UserManagement");
+          const Component = () => (
+            <PermissionRoute module="menus" action="users">
+              <PermissionRoute module="users" action="view">
+                <Page />
+              </PermissionRoute>
+            </PermissionRoute>
+          );
+          return { Component };
+        },
+        HydrateFallback: ProgressBar,
+        handle: { title: "用户管理" },
+      },
+      {
+        path: ROUTE_PATHS.operationLogs.slice(1),
+        lazy: async () => {
+          const { default: Page } = await import("@/pages/OperationLogs");
+          const Component = () => (
+            <PermissionRoute module="menus" action="operation_logs">
+              <PermissionRoute module="operation_logs" action="view">
+                <Page />
+              </PermissionRoute>
+            </PermissionRoute>
+          );
+          return { Component };
+        },
+        HydrateFallback: ProgressBar,
+        handle: { title: "操作日志" },
+      },
+      {
+        path: ROUTE_PATHS.permissions.slice(1),
+        lazy: async () => {
+          const { default: Page } = await import("@/pages/PermissionManagement");
+          const Component = () => (
+            <PermissionRoute module="menus" action="permissions">
+              <Page />
+            </PermissionRoute>
+          );
+          return { Component };
+        },
+        HydrateFallback: ProgressBar,
+        handle: { title: "权限管理" },
+      },
+      {
+        path: ROUTE_PATHS.reportFeedback.slice(1),
+        lazy: async () => {
+          const { default: Page } = await import("@/pages/FeedbackManagement");
+          const Component = () => (
+            <PermissionRoute module="menus" action="report_feedback">
+              <PermissionRoute module="report_feedback" action="view">
+                <Page />
+              </PermissionRoute>
+            </PermissionRoute>
+          );
+          return { Component };
+        },
+        HydrateFallback: ProgressBar,
+        handle: { title: "反馈管理" },
       },
     ],
   },
   {
     path: "*",
-    lazy: async () => ({
-      Component: (await import("@/pages/NotFound")).default,
-    }),
-    HydrateFallback: ProgressBar,
+    element: <Navigate replace to="/" />,
   },
 ];
 

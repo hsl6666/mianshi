@@ -1,14 +1,20 @@
-import { Dropdown, type MenuProps } from "antd";
+import { Button, Tooltip } from "antd";
+import { MoonOutlined, SunOutlined } from "@ant-design/icons";
 import { useTheme } from "@/components/ThemeProvider";
-import { DesktopOutlined,MoonOutlined,SunOutlined } from '@ant-design/icons';
 
-export function ThemeSwitch() {
-  const { theme, setTheme, isDarkMode } = useTheme();
+type ThemeSwitchProps = {
+  className?: string;
+};
 
-  const handleChange = async (theme: "system" | "light" | "dark") => {
+export function ThemeSwitch({ className }: ThemeSwitchProps) {
+  const { isDarkMode, setTheme } = useTheme();
+
+  const handleToggle = async () => {
+    const nextTheme = isDarkMode ? "light" : "dark";
     const handler = () => {
-      setTheme(theme);
+      setTheme(nextTheme);
     };
+
     if (!document.startViewTransition) {
       handler();
       return;
@@ -33,49 +39,15 @@ export function ThemeSwitch() {
     );
   };
 
-  const items: MenuProps["items"] = [
-    {
-      label: (
-        <div>
-          <SunOutlined></SunOutlined> 浅色模式
-        </div>
-      ),
-      key: "0",
-      onClick: () => handleChange("light"),
-    },
-    {
-      label: (
-        <div>
-          <MoonOutlined></MoonOutlined> 深色模式
-        </div>
-      ),
-      key: "1",
-      onClick: () => handleChange("dark"),
-    },
-    {
-      label: (
-        <div>
-          <DesktopOutlined></DesktopOutlined> 跟随系统
-        </div>
-      ),
-      key: "3",
-      onClick: () => handleChange("system"),
-    },
-  ];
-
   return (
-    <Dropdown menu={{ items }} trigger={["click"]} className="p-2">
-      {theme === "dark" ? (
-        <span>MoonOutlined</span>
-      ) : theme === "light" ? (
-        <span>
-          <SunOutlined></SunOutlined>
-        </span>
-      ) : (
-        <span>
-          <DesktopOutlined></DesktopOutlined>
-        </span>
-      )}
-    </Dropdown>
+    <Tooltip title={isDarkMode ? "切换白天模式" : "切换夜间模式"}>
+      <Button
+        type="text"
+        className={className}
+        icon={isDarkMode ? <SunOutlined className="text-base" /> : <MoonOutlined className="text-base" />}
+        onClick={handleToggle}
+        aria-label={isDarkMode ? "切换白天模式" : "切换夜间模式"}
+      />
+    </Tooltip>
   );
 }

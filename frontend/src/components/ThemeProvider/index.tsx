@@ -34,7 +34,7 @@ export function ThemeProvider({
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (
       theme === "dark" ||
-      (theme === "system" && window.matchMedia("(prefers-color-scheme: dark").matches)
+      (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)
     ) {
       return true;
     }

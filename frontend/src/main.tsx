@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import App from "./App";
+import "@/utils/date";
 import "@/assets/styles/index.css";
 import "@/assets/styles/light.css";
 import "@/assets/styles/dark.css";

@@ -8,14 +8,14 @@ export default function NotFound() {
   return (
     <>
       <Helmet>
-        <title>404 | {import.meta.env.VITE_APP_TITLE_SUFFIX}</title>
+        <title>{`404 | ${import.meta.env.VITE_APP_TITLE_SUFFIX || "招投标咨询系统"}`}</title>
       </Helmet>
       <Result
         status="404"
         title="404"
         subTitle="您访问的页面不存在。"
         extra={
-          <Button type="primary" onClick={() => navigate(ROUTE_PATHS.landing)}>
+          <Button type="primary" onClick={() => navigate(ROUTE_PATHS.biddingProjects)}>
             返回首页
           </Button>
         }

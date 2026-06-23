@@ -1,73 +1,125 @@
-# AI 面试官流程系统
+# 招投标咨询项目管理系统
 
-这是按需求落地的可运行 MVP：React + TypeScript + Tailwind + Antd 前端，FastAPI + SQLite 后端，包含真实扫码上传、简历解析回填、岗位笔试、Monaco 代码题、WebRTC 信令、LangGraph/GLM-4.6 占位、口试字幕、摄像头随机抽帧入库。
+面向招投标咨询公司的项目台账：记录协助编写的投标文件，分两步管理——**项目登记**与**评审反馈**。
+
+技术栈：React + TypeScript + Ant Design + Tailwind 前端，FastAPI + SQLAlchemy + SQLite 后端。
+
+## 业务流程
+
+| 步骤 | 说明 | 字段/操作 |
+|------|------|-----------|
+| **项目组** | 按开标时间维度建组 | 分组名称（如「5月27号开标」）、开标时间、招标文件、投标文件（组内共享） |
+| **第一步** | 在组下登记项目 | 项目名称、参加单位、开标时间 |
+| **第二步** | 评审反馈 | 开标后填写最终得分、排名、打分明细、备注 |
+
+项目状态自动流转：
+
+- **已登记**：已创建，开标时间未到
+- **待反馈**：开标时间已到，等待录入评审结果
+- **已完成**：已提交评审反馈
+
+## 功能说明
+
+### 登录与鉴权
+
+- JWT 登录，未登录自动跳转登录页
+- 内置账号：`cqzsxh` / `zcs`，密码均为 `123456`
+- 各账号招投标数据按 `owner` 隔离，仅能看到自己创建的项目组与项目；历史数据归属 `cqzsxh`
+
+### 角色与菜单权限
+
+| 角色 | 账号示例 | 可见模块 |
+|------|----------|----------|
+| 超级管理员 | `cqzsxh` | 项目管理、用户管理、操作日志 |
+| 普通用户 | `zcs` 等 | 仅项目管理 |
+
+### 用户管理（超级管理员）
+
+- 用户列表、新建、编辑、禁用、改密、删除
+- `cqzsxh` 为系统保留超级管理员，不可删除或禁用
+
+### 操作日志（超级管理员）
+
+- 分页查看登录、用户、招投标等操作记录
+- 支持按关键词、操作人、模块筛选
+
+### 项目管理
+
+- 树形列表：项目组为父级，项目为子级
+- 新建项目组：仅填分组名称；在组内「添加项目」需填写项目信息并上传招标/投标文件
+- 编辑项目组：仅可改分组名称；编辑项目：可改名称、参加单位、开标时间
+- 评审反馈、附件下载、项目删除
 
 ## 目录结构
 
 ```text
 backend/
-  app/api/              REST、移动上传页、WebRTC 信令
-  app/core/             配置与环境变量
-  app/services/         简历解析、题库、LangGraph 面试编排、RTC
-  app/models.py         SQLite 数据模型
-  app/schemas.py        Pydantic API schema
+  app/api/auth.py               登录鉴权
+  app/api/users.py              用户管理（超管）
+  app/api/operation_logs.py     操作日志（超管）
+  app/api/bidding_projects.py   招投标项目 REST API
+  app/models.py                 数据模型（User、OperationLog 等）
+  app/schemas.py                Pydantic 校验
+  app/services/                 业务逻辑与文件存储
 frontend/
-  src/features/interview/
-    api.ts              面试流程专用 API 客户端
-    storage.ts          session/localStorage
-    components/         流程壳、表单控件、歌词字幕
-    pages/              Step1/Step2/Step3/完成页
-docker-compose.yml
+  src/features/bidding/         项目管理页面与组件
+  src/pages/Login/              登录页
+  src/pages/UserManagement/     用户管理（超管）
+  src/pages/OperationLogs/      操作日志（超管）
+  src/request/client.ts         API 客户端（Token 注入）
 ```
 
-## 核心数据模型
+## 登录
 
-- `sessions`：候选人 session、岗位、表单资料、解析资料、简历文本、笔试提交、口试摘要。
-- `attachments`：上传附件元数据、文件路径、解析文本。
-- `transcripts`：口试用户转写与 AI 回复。
-- `interview_snapshots`：摄像头随机抽帧，图片二进制保存在 SQLite，文件目录只做缓存备份。
+- 登录页：http://127.0.0.1:5173/login
+- 登录接口：`POST /api/auth/login`（JSON：`username`、`password`）
+- 当前用户：`GET /api/auth/me`
+- 业务接口需在请求头携带：`Authorization: Bearer <access_token>`
 
-## API 设计
+## API 概览
 
-- `POST /api/sessions` 创建或确认 session
-- `GET /api/sessions/{id}` 获取候选人 session、附件、解析结果、抽帧
-- `PATCH /api/sessions/{id}` 保存基础表单
-- `GET /m/upload?sessionId=...` 手机上传页
-- `POST /api/sessions/{id}/attachments` 上传 PDF/图片并触发解析
-- `GET /api/questions?role=...` 按岗位获取题目
-- `POST /api/sessions/{id}/written-submission` 保存笔试
-- `POST /api/rtc/offer` WebRTC SDP 信令
-- `POST /api/sessions/{id}/oral/start` 开场提问
-- `POST /api/sessions/{id}/oral/respond` 保存候选回答并生成追问
-- `POST /api/sessions/{id}/snapshots` 保存摄像头抽帧到数据库
-- `GET /api/sessions/{id}/snapshots/{snapshotId}/image` 从数据库读取抽帧图片
-- `POST /api/sessions/{id}/oral-summary` 保存口试 QA
+**认证**
+
+- `POST /api/auth/login` — 登录获取 Token（含 `role`）
+- `GET /api/auth/me` — 当前用户信息
+
+**用户与日志（超级管理员）**
+
+- `GET/POST/PATCH/DELETE /api/users` — 用户 CRUD
+- `GET /api/operation-logs` — 操作日志分页列表
+
+**招投标**
+
+- `GET /api/bidding-project-groups` — 项目组列表
+- `POST /api/bidding-project-groups` — 新建项目组
+- `PATCH /api/bidding-project-groups/{id}` — 更新项目组名称
+- `GET /api/bidding-projects` — 分页树形列表（keyword、status）
+- `POST /api/bidding-projects` — 新建项目（`group_id` 或 `group_name`）
+- `GET/PATCH/DELETE /api/bidding-projects/{id}` — 项目详情/更新/删除
+- `POST /api/bidding-projects/{id}/feedback` — 提交评审反馈
+- `GET /api/bidding-project-groups/{gid}/attachments/{aid}/download` — 下载组附件
 
 ## 启动
 
-本地两条命令：
-
 ```bash
+# 后端
 cd backend
 cp .env.example .env
+pip install -r requirements.txt
 ./.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8010 --reload
-```
 
-```bash
+# 前端
 cd frontend
+npm install
 npm run dev
 ```
 
-Docker：
+- 前端：http://127.0.0.1:5173/login
+- 后端健康检查：http://127.0.0.1:8010/health
 
-```bash
-docker compose up --build
-```
+开发模式下 Vite 会将 `/api` 代理到 `8010`。
 
-当前机器已有其他服务占用 8000，本地开发默认使用后端 `8010`。手机扫码上传时，把 `backend/.env` 和 `frontend/.env.development` 的 `PUBLIC_BASE_URL` / `VITE_PUBLIC_BASE_URL` 改成电脑局域网 IP，例如：
+## 分支
 
-```bash
-ipconfig getifaddr en0
-```
-
-前端访问：`http://127.0.0.1:5173/interview/basic`。如果你按我当前联调方式启动，则访问 `http://127.0.0.1:5174/interview/basic`。
+- `项目基础框架`：脚手架
+- `feature/招投标项目管理`：招投标业务、登录鉴权、用户管理与操作日志

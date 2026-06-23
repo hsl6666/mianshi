@@ -1,27 +1,40 @@
-import { useNavigate } from "react-router-dom";
 import { Avatar, Dropdown, type MenuProps } from "antd";
-import { ROUTE_PATHS } from "@/constants/common";
+import { LogoutOutlined, UserOutlined } from "@ant-design/icons";
+import { useAuthStore } from "@/store/authStore";
 
 export default function UserAvatar() {
-  const navigate = useNavigate();
+  const username = useAuthStore((s) => s.username);
+  const logout = useAuthStore((s) => s.logout);
 
   const items: MenuProps["items"] = [
     {
-      key: "loginOut",
+      key: "user",
       label: (
-        <>
-          <span>LogoutOutlined</span> 退出登录
-        </>
+        <span className="text-gray-500">
+          <UserOutlined className="mr-1" />
+          {username || "用户"}
+        </span>
       ),
-      onClick: () => {
-        navigate(ROUTE_PATHS.login);
-      },
+      disabled: true,
+    },
+    { type: "divider" },
+    {
+      key: "logout",
+      label: (
+        <span>
+          <LogoutOutlined className="mr-1" />
+          退出登录
+        </span>
+      ),
+      onClick: () => logout(),
     },
   ];
 
   return (
     <Dropdown menu={{ items }} trigger={["click"]}>
-      <Avatar size={36} src="https://api.dicebear.com/7.x/miniavs/svg?seed=1" className="cursor-pointer" />
+      <Avatar size={36} className="cursor-pointer bg-blue-500">
+        {(username || "U").charAt(0).toUpperCase()}
+      </Avatar>
     </Dropdown>
   );
 }

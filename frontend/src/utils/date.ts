@@ -1,46 +1,43 @@
-import dayjs from "dayjs";
+import dayjs, { type Dayjs } from "dayjs";
 import timezone from "dayjs/plugin/timezone";
 import utc from "dayjs/plugin/utc";
+import "dayjs/locale/zh-cn";
 
-// 加载插件
 dayjs.extend(utc);
 dayjs.extend(timezone);
+dayjs.locale("zh-cn");
 
-type DateFormat = "YYYY-MM-DD HH:mm:ss" | "YYYY-MM-DD";
+/** 业务统一使用中国时区（北京时间） */
+export const CHINA_TZ = "Asia/Shanghai";
 
 /**
- * 将UTC时间转换为本地时间
- * @param utcTime UTC时间，可以是Day.js支持的任何类型
- * @param format 转换后的日期格式，默认为"YYYY-MM-DD HH:mm:ss"
- * @param withAbbr 是否包含时区缩写，默认为true
- * @param timeZone 指定时区，不传时，默认为浏览器的本地时区
- * @returns 转换后的本地时间字符串
+ * 解析后端返回的 naive 时间字符串（按北京时间理解）
  */
-export function convertUTCToLocal(
-  utcTime: dayjs.ConfigType,
-  format: DateFormat = "YYYY-MM-DD HH:mm:ss",
-  withAbbr = true,
-  timeZone?: string,
-) {
-  // 将UTC时间转换为指定时区的时间，timeZone不传时，则默认为浏览器的本地时区，或者使用 dayjs.tz.guess()显式地传递时区
-  // timeZone = timeZone || dayjs.tz.guess();
-  const localTime = dayjs.utc(utcTime).tz(timeZone);
-
-  // 如果不需要时区缩写，则直接返回格式化后的时间
-  if (!withAbbr) {
-    return localTime.format(format);
-  }
-
-  // 格式化时间并拼接时区缩写
-  return `${localTime.format(format)} ${localTime.format("z")}`;
+export function parseChinaTime(value: dayjs.ConfigType): Dayjs | null {
+  if (value === null || value === undefined || value === "") return null;
+  const normalized =
+    typeof value === "string" ? value.trim().replace("T", " ").replace(/\.\d+/, "") : value;
+  const parsed = dayjs.tz(normalized, CHINA_TZ);
+  return parsed.isValid() ? parsed : null;
 }
 
-/**
- * 格式化日期
- * @param date 日期，可以是Day.js支持的任何类型
- * @param format 格式化字符串，默认为"YYYY-MM-DD HH:mm:ss"
- * @returns 格式化后的日期字符串
- */
-export function dateFormat(date: dayjs.ConfigType, format: DateFormat = "YYYY-MM-DD HH:mm:ss") {
-  return dayjs(date).format(format);
+/** 格式化展示时间（默认北京时间） */
+export function formatChinaTime(
+  value: dayjs.ConfigType,
+  format: string = "YYYY-MM-DD HH:mm:ss",
+): string {
+  const time = parseChinaTime(value);
+  return time ? time.format(format) : "-";
+}
+
+/** 提交给后端的 naive 时间字符串（北京时间） */
+export function formatChinaTimeForApi(value: dayjs.ConfigType): string {
+  if (!value) return "";
+  const time = dayjs.isDayjs(value) ? value.tz(CHINA_TZ, true) : parseChinaTime(value);
+  return time ? time.format("YYYY-MM-DDTHH:mm:ss") : "";
+}
+
+/** 当前北京时间 */
+export function chinaNow(): Dayjs {
+  return dayjs().tz(CHINA_TZ);
 }

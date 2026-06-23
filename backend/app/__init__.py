@@ -1,1 +1,1 @@
-"""AI interviewer backend package."""
+"""Quanzhan backend package."""

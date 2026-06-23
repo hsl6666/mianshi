@@ -1,4 +1,6 @@
 export * from "./useDebouncedFn";
+export * from "./useIsMobile";
+export * from "./useResponsiveOverlay";
 export * from "./useDocumentVisibility";
 export * from "./useEventListener";
 export * from "./useInViewport";

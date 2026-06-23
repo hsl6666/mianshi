@@ -1,7 +1,13 @@
 export const ROUTE_PATHS = {
-  notFound: "/not-found",
-  login: "/interview/basic",
-  landing: "/landing",
-  echartsDemo: "/echarts-demo",
-  interviewBasic: "/interview/basic",
+  login: "/login",
+  dashboard: "/dashboard",
+  workbench: "/workbench",
+  rechargeConsole: "/recharge-console",
+  biddingProjects: "/bidding-projects",
+  technicalReport: "/technical-report",
+  technicalReport2: "/technical-report-2",
+  users: "/users",
+  operationLogs: "/operation-logs",
+  permissions: "/permissions",
+  reportFeedback: "/report-feedback",
 };

@@ -47,6 +47,9 @@ pnpm-debug.log*
 *.tmp
 *.swp
 *~
+*.tar
+*.tar.gz
+*.tgz
 
 # IDE (optional local overrides)
 .idea/

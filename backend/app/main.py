@@ -1,11 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
-from app.api import questions, results, rtc, sessions
+from app.api import auth, bidding_companies, bidding_project_groups, bidding_projects, health, operation_logs, permissions, report_feedback, third_party, users
 from app.core.config import get_settings
 from app.db import init_db
-
 
 settings = get_settings()
 app = FastAPI(title=settings.app_name, version="1.0.0")
@@ -19,20 +17,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/uploads", StaticFiles(directory=settings.uploads_dir), name="uploads")
-app.mount("/snapshots", StaticFiles(directory=settings.snapshots_dir), name="snapshots")
-
-app.include_router(sessions.router)
-app.include_router(questions.router)
-app.include_router(rtc.router)
-app.include_router(results.router)
+app.include_router(health.router)
+app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(permissions.router)
+app.include_router(operation_logs.router)
+app.include_router(bidding_project_groups.router)
+app.include_router(bidding_projects.router)
+app.include_router(bidding_companies.router)
+app.include_router(report_feedback.router)
+app.include_router(third_party.router)
 
 
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
-
-
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
