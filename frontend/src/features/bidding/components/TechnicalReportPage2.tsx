@@ -449,7 +449,7 @@ export default function TechnicalReportPage2() {
       const selectedTags = isSelected
         ? current.selectedTags.filter((item) => item !== tag)
         : [...current.selectedTags, tag];
-      if (!isSelected && getFeedbackDraftLength({ ...current, selectedTags }).length > 2000) {
+      if (!isSelected && getFeedbackDraftLength({ ...current, selectedTags }) > 2000) {
         message.warning("反馈内容不能超过2000字");
         return current;
       }
@@ -892,7 +892,7 @@ export default function TechnicalReportPage2() {
   return (
     <div className="min-h-full bg-[#f7fbfa] text-slate-800">
       <div className="sticky top-0 z-20 border-b border-teal-100/70 bg-white/90 backdrop-blur">
-        {/* <div className="mx-auto flex max-w-[1180px] justify-end px-4 py-3">
+        <div className="hidden">
           <Button
             type="primary"
             icon={<DownloadOutlined />}
@@ -901,7 +901,7 @@ export default function TechnicalReportPage2() {
           >
             下载报告
           </Button>
-        </div> */}
+        </div>
       </div>
 
       <div ref={reportRef} className="bg-[#f7fbfa] pb-12">
@@ -1305,7 +1305,6 @@ export default function TechnicalReportPage2() {
         }
         styles={{
           mask: { backgroundColor: "rgba(15, 23, 42, 0.28)" },
-          content: { borderRadius: 12, overflow: "hidden", boxShadow: "0 16px 48px rgba(15, 23, 42, 0.12)" },
           header: { paddingBottom: 8 },
           body: { paddingTop: 8 },
         }}

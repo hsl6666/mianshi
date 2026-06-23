@@ -32,6 +32,10 @@ import {
 import { usePermission } from "@/hooks/usePermission";
 import { formatChinaTime } from "@/utils/date";
 
+function isPresent<T>(value: T | null | undefined): value is T {
+  return value != null;
+}
+
 const FEEDBACK_TYPE_OPTIONS = [
   { value: "", label: "全部类型" },
   { value: "like", label: "好评" },
@@ -378,7 +382,7 @@ export default function FeedbackManagementPage() {
                 ),
               }
             : null,
-        ].filter(Boolean)}
+        ].filter(isPresent)}
       />
 
       <Modal
