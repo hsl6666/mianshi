@@ -2,14 +2,21 @@ services:
   backend:
     build:
       context: ./backend
+      args:
+        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.11-slim}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
     container_name: mianshi-backend
     restart: unless-stopped
     environment:
-      DATABASE_URL: sqlite:///./data/app.db
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      DATABASE_URL: ${DATABASE_URL:-sqlite:///./data/app.db}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://127.0.0.1}
+      JWT_SECRET: ${JWT_SECRET:-quanzhan-dev-jwt-secret-change-in-production}
       FEISHU_BID_NOTIFY_WEBHOOK_URL: ${FEISHU_BID_NOTIFY_WEBHOOK_URL:-}
       FEISHU_BID_NOTIFY_SECRET: ${FEISHU_BID_NOTIFY_SECRET:-}
       FEISHU_BID_NOTIFY_AT_USER_ID: ${FEISHU_BID_NOTIFY_AT_USER_ID:-}
+      REPORT_DATA_UPLOAD_API_KEY: ${REPORT_DATA_UPLOAD_API_KEY:-qz-report-data-upload-2026-06-04}
+      THIRD_PARTY_API_BASE_URL: ${THIRD_PARTY_API_BASE_URL:-http://101.42.182.149}
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
@@ -19,7 +26,13 @@ services:
     build:
       context: ./frontend
       args:
-        VITE_API_BASE_URL: ""
+        NODE_IMAGE: ${NODE_IMAGE:-node:20-alpine}
+        NGINX_IMAGE: ${NGINX_IMAGE:-nginx:1.27-alpine}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        VITE_WANGJUN_LOGIN_ENABLED: ${VITE_WANGJUN_LOGIN_ENABLED:-false}
+        VITE_WANGJUN_API_BASE_URL: ${VITE_WANGJUN_API_BASE_URL:-/wangjun}
+        VITE_WANGJUN_PROXY_TARGET: ${VITE_WANGJUN_PROXY_TARGET:-http://101.42.182.149}
+        NPM_CONFIG_REGISTRY: ${NPM_CONFIG_REGISTRY:-}
     container_name: mianshi-frontend
     restart: unless-stopped
     ports:

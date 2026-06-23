@@ -15,14 +15,17 @@ import { fetchUsers, type UserItem } from "@/api/auth";
 import { PlusOutlined } from "@ant-design/icons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { usePermission } from "@/hooks/usePermission";
-import { analyzeThirdPartySubmissionFile, uploadThirdPartyProjectBidFile } from "@/api/wangjun";
+import {
+  analyzeThirdPartySubmissionFile,
+  analyzeThirdPartyPublicSubmissionFile,
+  uploadThirdPartyProjectBidFile,
+} from "@/api/wangjun";
 import { getWangjunAccessToken, isWangjunLoginEnabled } from "@/utils/wangjunAuth";
 import type { BiddingAccess } from "@/constants/permissions";
 import {
   createGroup,
   syncGroupThirdParty,
   bindBidVersionThirdPartySubmission,
-  fetchBidVersion,
   createProject,
   deleteBidVersion,
   deleteCompany,
@@ -493,10 +496,7 @@ export default function ProjectListPage() {
     );
   };
 
-  const handleAnalyzeVersion = async (
-    record: BidVersionListItem,
-    context: { groupId: number; companyName: string },
-  ) => {
+  const handleAnalyzeVersion = async (record: BidVersionListItem) => {
     if (analyzingVersionIds.has(record.id)) return;
 
     if (!isWangjunLoginEnabled()) {
@@ -508,10 +508,9 @@ export default function ProjectListPage() {
       return;
     }
 
-    const group = items.find((item) => item.db_id === context.groupId);
-    const thirdPartyProjectId = group?.project_id || group?.project_code;
-    if (!thirdPartyProjectId) {
-      message.error("项目组未绑定三方项目 ID");
+    const submissionFileId = record.third_party_submission_file_id?.trim();
+    if (!submissionFileId) {
+      message.error("投标文件未绑定 submission_file.id，无法提交分析");
       return;
     }
 
@@ -519,22 +518,7 @@ export default function ProjectListPage() {
     patchVersion(record.id, { report_status: "analyzing" });
 
     try {
-      const responseFile = await fetchBidVersion({
-        attachmentId: record.id,
-        filename: record.original_name,
-      });
-      const thirdParty = await analyzeThirdPartySubmissionFile({
-        projectId: String(thirdPartyProjectId),
-        projectCode: group?.project_code,
-        companyName: context.companyName,
-        responseFile,
-        thirdPartyFileName: record.third_party_file_name || record.original_name,
-        thirdPartyCompanyName: context.companyName,
-      });
-      const submissionFileId = thirdParty.submission_file?.id?.trim();
-      if (!submissionFileId) {
-        throw new Error("三方响应缺少 submission_file.id");
-      }
+      const thirdParty = await analyzeThirdPartyPublicSubmissionFile({ submissionFileId });
       const next = await bindBidVersionThirdPartySubmission({
         attachmentId: record.id,
         submissionFileId,

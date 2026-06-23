@@ -49,3 +49,11 @@ export interface ThirdPartySubmissionAnalyzeResponse {
   report_data?: Record<string, unknown>;
   [key: string]: unknown;
 }
+
+export interface ThirdPartyPublicSubmissionAnalyzeResponse {
+  status?: string;
+  message?: string;
+  report?: Record<string, unknown>;
+  report_data?: Record<string, unknown>;
+  [key: string]: unknown;
+}

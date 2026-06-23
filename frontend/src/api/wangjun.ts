@@ -4,6 +4,7 @@ import { isWangjunLoginEnabled, type WangjunLoginResponse } from "@/utils/wangju
 import {
   THIRD_PARTY_BIDDING_FIELDS,
   type ThirdPartyProjectCreateResponse,
+  type ThirdPartyPublicSubmissionAnalyzeResponse,
   type ThirdPartySubmissionAnalyzeResponse,
 } from "@/features/bidding/contracts/thirdPartyBidding";
 
@@ -79,6 +80,19 @@ export async function analyzeThirdPartySubmissionFile(args: {
     buildWangjunUrl("/api/v1/bidding/third-party/submission-files/analyze"),
     formData,
     { headers: { "Content-Type": "multipart/form-data" }, timeout: 300_000 },
+  );
+  return data;
+}
+
+export async function analyzeThirdPartyPublicSubmissionFile(args: {
+  submissionFileId: string;
+}): Promise<ThirdPartyPublicSubmissionAnalyzeResponse> {
+  const { data } = await wangjunClient.post<ThirdPartyPublicSubmissionAnalyzeResponse>(
+    buildWangjunUrl(
+      `/api/v1/bidding/public/submission-files/${encodeURIComponent(args.submissionFileId)}/analyze`,
+    ),
+    undefined,
+    { timeout: 120_000 },
   );
   return data;
 }
