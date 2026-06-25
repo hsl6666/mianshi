@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChartOutlined,
   DeleteOutlined,
   EyeOutlined,
   FileSearchOutlined,
+  LoadingOutlined,
   RobotOutlined,
   ReloadOutlined,
   RiseOutlined,
@@ -31,13 +32,15 @@ import {
   Typography,
 } from "antd";
 import dayjs from "dayjs";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
-  chatWithInterviewAssistant,
   deleteAllInterviewResults,
   deleteInterviewResult,
   fetchInterviewResultDetail,
   fetchInterviewResults,
   resolveAssetUrl,
+  streamChatWithInterviewAssistant,
 } from "../api";
 import { InterviewShell } from "../components/InterviewShell";
 import type {
@@ -63,6 +66,25 @@ const riskConfig: Record<RiskLevel, { label: string; color: string }> = {
   high: { label: "高风险", color: "red" },
 };
 
+const beijingDateTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: "Asia/Shanghai",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+function formatBeijingDateTime(value: string) {
+  const normalizedValue = /[zZ]|[+-]\d{2}:\d{2}$/.test(value)
+    ? value
+    : `${value.replace(" ", "T")}Z`;
+  const date = new Date(normalizedValue);
+  if (Number.isNaN(date.getTime())) return value;
+  return beijingDateTimeFormatter.format(date).replace(/\//g, "-");
+}
+
 function buildBasicInfoUrl(sessionId: string) {
   const baseUrl = String(import.meta.env.VITE_APP_BASE_URL || "").replace(/\/$/, "");
   const query = new URLSearchParams({ sessionId, readonly: "1" });
@@ -86,6 +108,7 @@ export function ResultsBoard() {
   const [assistantSending, setAssistantSending] = useState(false);
   const [assistantSessionId, setAssistantSessionId] = useState("");
   const [assistantDraft, setAssistantDraft] = useState("");
+  const assistantScrollRef = useRef<HTMLDivElement | null>(null);
   const [assistantMessages, setAssistantMessages] = useState<AssistantChatMessage[]>([
     {
       role: "assistant",
@@ -102,6 +125,24 @@ export function ResultsBoard() {
     return { total, average, recommended, highRisk };
   }, [rows]);
 
+  const assistantTargetLabel = useMemo(() => {
+    if (assistantSessionId === ALL_CANDIDATES_VALUE) return "全部候选人";
+    const row = rows.find((item) => item.session_id === assistantSessionId);
+    if (!row) return "未选择候选人";
+    return `${row.name || "未命名"} / ${row.role || "未填写岗位"}`;
+  }, [assistantSessionId, rows]);
+
+  const assistantCandidateOptions = useMemo(
+    () => [
+      { value: ALL_CANDIDATES_VALUE, label: "全部候选人" },
+      ...rows.map((item) => ({
+        value: item.session_id,
+        label: `${item.name || "未命名"} / ${item.role || "未填写岗位"}`,
+      })),
+    ],
+    [rows],
+  );
+
   useEffect(() => {
     if (!assistantSessionId && rows.length) {
       setAssistantSessionId(ALL_CANDIDATES_VALUE);
@@ -111,6 +152,14 @@ export function ResultsBoard() {
   useEffect(() => {
     void loadResults();
   }, []);
+
+  useEffect(() => {
+    if (!assistantOpen) return;
+    assistantScrollRef.current?.scrollTo({
+      top: assistantScrollRef.current.scrollHeight,
+      behavior: assistantSending ? "auto" : "smooth",
+    });
+  }, [assistantMessages, assistantOpen, assistantSending]);
 
   async function loadResults() {
     setLoading(true);
@@ -172,24 +221,53 @@ export function ResultsBoard() {
     setAssistantDraft("");
     setAssistantSending(true);
     try {
-      const response = await chatWithInterviewAssistant(assistantSessionId, nextMessages);
-      setAssistantMessages((items) => [
-        ...items,
-        {
-          role: "assistant",
-          content: response.answer,
-          sql_used: response.sql_used,
-          warning: response.warning,
+      let finalMessage: AssistantChatMessage | null = null;
+      setAssistantMessages((items) => [...items, { role: "assistant", content: "" }]);
+      await streamChatWithInterviewAssistant(assistantSessionId, nextMessages, {
+        onChunk: (chunk) => {
+          setAssistantMessages((items) => {
+            const next = [...items];
+            const last = next[next.length - 1];
+            if (!last || last.role !== "assistant") return next;
+            next[next.length - 1] = {
+              ...last,
+              content: `${last.content}${chunk.content || ""}`,
+              sql_used: chunk.sql_used || last.sql_used,
+              warning: chunk.warning || last.warning,
+            };
+            return next;
+          });
         },
-      ]);
+        onDone: (chunk) => {
+          finalMessage = {
+            role: "assistant",
+            content: chunk.content || "",
+            sql_used: chunk.sql_used,
+            warning: chunk.warning,
+          };
+          setAssistantMessages((items) => {
+            const next = [...items];
+            const last = next[next.length - 1];
+            if (!last || last.role !== "assistant") return [...next, finalMessage as AssistantChatMessage];
+            next[next.length - 1] = {
+              ...last,
+              ...(finalMessage as AssistantChatMessage),
+              content: (finalMessage as AssistantChatMessage).content || last.content,
+            };
+            return next;
+          });
+        },
+      });
     } catch (error) {
-      const detailMessage =
-        typeof error === "object" &&
-        error &&
-        "response" in error &&
-        typeof (error as { response?: { data?: { detail?: string } } }).response?.data?.detail === "string"
-          ? (error as { response?: { data?: { detail?: string } } }).response?.data?.detail
-          : "";
+      setAssistantMessages((items) => {
+        const next = [...items];
+        const last = next[next.length - 1];
+        if (last?.role === "assistant" && !last.content.trim()) {
+          next.pop();
+        }
+        return next;
+      });
+      const detailMessage = error instanceof Error ? error.message : "";
       message.error(detailMessage || "智能体回答失败，请确认模型配置和后端服务可用");
     } finally {
       setAssistantSending(false);
@@ -332,9 +410,7 @@ export function ResultsBoard() {
       dataIndex: "updated_at",
       width: 170,
       sorter: (a, b) => dayjs(a.updated_at).valueOf() - dayjs(b.updated_at).valueOf(),
-      render: (value) => (
-        <span className="text-xs text-stone-500">{dayjs(value).format("YYYY-MM-DD HH:mm")}</span>
-      ),
+      render: (value) => <span className="text-xs text-stone-500">{formatBeijingDateTime(value)}</span>,
     },
     {
       title: "操作",
@@ -414,88 +490,149 @@ export function ResultsBoard() {
 
       <Button
         type="primary"
-        shape="circle"
         size="large"
         icon={<RobotOutlined />}
-        className="!fixed bottom-6 right-6 z-40 !h-14 !w-14 shadow-lg"
+        className="!fixed bottom-6 right-6 z-40 !h-12 !rounded-full !bg-stone-950 px-5 shadow-xl"
         onClick={openAssistant}
-      />
+      >
+        AI 助手
+      </Button>
 
       <Modal
-        title="面试分析助手"
+        title={null}
         open={assistantOpen}
         onCancel={() => setAssistantOpen(false)}
         destroyOnClose={false}
-        width={720}
+        width={980}
         footer={null}
+        className="assistant-analysis-modal"
+        styles={{
+          body: {
+            padding: 0,
+            maxHeight: "min(78vh, 720px)",
+            overflow: "hidden",
+          },
+        }}
       >
-        <div className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-[220px_1fr] md:items-center">
-            <span className="text-sm font-medium text-stone-700">当前候选人</span>
-            <Select
-              value={assistantSessionId || undefined}
-              placeholder="请选择候选人"
-              options={[
-                { value: ALL_CANDIDATES_VALUE, label: "全部候选人" },
-                ...rows.map((item) => ({
-                  value: item.session_id,
-                  label: `${item.name || "未命名"} / ${item.role || "未填写岗位"}`,
-                })),
-              ]}
-              onChange={handleAssistantCandidateChange}
-            />
+        <div className="flex h-[min(78vh,720px)] min-h-[560px] flex-col overflow-hidden rounded-xl bg-[#f7f5ef]">
+          <div className="shrink-0 border-b border-stone-200 bg-stone-950 px-6 py-5 text-white">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-emerald-200">
+                  <RobotOutlined />
+                  Interview Intelligence
+                </div>
+                <h2 className="mt-3 text-2xl font-semibold tracking-normal">面试分析助手</h2>
+                <p className="mt-2 text-sm leading-6 text-stone-300">
+                  基于候选人资料、笔试、口试和结果库进行追问、对比和复核。
+                </p>
+              </div>
+              <div className="w-full max-w-sm">
+                <div className="mb-2 text-xs font-medium text-stone-300">分析范围</div>
+                <Select
+                  value={assistantSessionId || undefined}
+                  placeholder="请选择候选人"
+                  options={assistantCandidateOptions}
+                  onChange={handleAssistantCandidateChange}
+                  className="w-full"
+                  size="large"
+                />
+              </div>
+            </div>
           </div>
 
-          <div className="h-[420px] overflow-y-auto rounded-xl border border-stone-200 bg-stone-50 p-4">
-            <div className="space-y-3">
-              {assistantMessages.map((item, index) => (
-                <div
-                  key={`${item.role}-${index}`}
-                  className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm ${
-                    item.role === "assistant"
-                      ? "mr-auto bg-white text-stone-800"
-                      : "ml-auto bg-emerald-900 text-emerald-50"
-                  }`}
-                >
-                  <div>{item.content}</div>
-                  {item.sql_used ? (
-                    <div className="mt-2 rounded-lg bg-stone-100 px-3 py-2 font-mono text-[11px] leading-5 text-stone-600">
-                      SQL: {item.sql_used}
+          <div className="grid min-h-0 flex-1 lg:grid-cols-[220px_1fr]">
+            <aside className="border-b border-stone-200 bg-[#ece7dc] p-5 lg:border-b-0 lg:border-r">
+              <div className="rounded-lg bg-white/70 p-4 shadow-sm">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">当前对象</div>
+                <div className="mt-2 text-sm font-semibold leading-6 text-stone-950">{assistantTargetLabel}</div>
+              </div>
+              <div className="mt-4 space-y-2">
+                {[
+                  "总结优势与风险",
+                  "列出追问建议",
+                  "对比同岗位候选人",
+                ].map((item) => (
+                  <Button
+                    key={item}
+                    block
+                    className="!justify-start !border-stone-300 !bg-white/60 !text-left"
+                    disabled={assistantSending}
+                    onClick={() => setAssistantDraft(item)}
+                  >
+                    {item}
+                  </Button>
+                ))}
+              </div>
+            </aside>
+
+            <section className="flex min-h-0 flex-col">
+              <div ref={assistantScrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+                <div className="space-y-4">
+                  {assistantMessages.map((item, index) => {
+                    if (!item.content.trim() && item.role === "assistant") return null;
+                    return (
+                      <div
+                        key={`${item.role}-${index}`}
+                        className={`max-w-[92%] rounded-xl px-4 py-3 text-sm leading-6 shadow-sm ${
+                          item.role === "assistant"
+                            ? "mr-auto border border-stone-200 bg-white text-stone-800"
+                            : "ml-auto bg-stone-950 text-stone-50"
+                        }`}
+                      >
+                        {item.role === "assistant" ? (
+                          <AssistantMarkdown content={item.content} />
+                        ) : (
+                          <div className="whitespace-pre-wrap">{item.content}</div>
+                        )}
+                        {item.sql_used ? (
+                          <div className="mt-2 rounded-lg bg-stone-100 px-3 py-2 font-mono text-[11px] leading-5 text-stone-600">
+                            SQL: {item.sql_used}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                  {assistantSending ? (
+                    <div className="mr-auto max-w-[92%] rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-500 shadow-sm">
+                      <Space size={8}>
+                        <LoadingOutlined />
+                        <span>正在流式分析...</span>
+                      </Space>
                     </div>
                   ) : null}
                 </div>
-              ))}
-              {assistantSending ? (
-                <div className="mr-auto max-w-[88%] rounded-2xl bg-white px-4 py-3 text-sm text-stone-500 shadow-sm">
-                  正在分析...
-                </div>
-              ) : null}
-            </div>
-          </div>
+              </div>
 
-          <div className="space-y-3">
-            <TextArea
-              value={assistantDraft}
-              onChange={(event) => setAssistantDraft(event.target.value)}
-              rows={4}
-              placeholder="例如：总结当前候选人的优势和风险；对比当前候选人与同岗位候选人的综合分、学历和项目背景。"
-              onPressEnter={(event) => {
-                if (!event.shiftKey) {
-                  event.preventDefault();
-                  void sendAssistantMessage();
-                }
-              }}
-            />
-            <div className="flex justify-end">
-              <Button
-                type="primary"
-                icon={<SendOutlined />}
-                loading={assistantSending}
-                onClick={() => void sendAssistantMessage()}
-              >
-                发送
-              </Button>
-            </div>
+              <div className="shrink-0 border-t border-stone-200 bg-white p-4">
+                <TextArea
+                  value={assistantDraft}
+                  onChange={(event) => setAssistantDraft(event.target.value)}
+                  rows={3}
+                  placeholder="输入问题，Enter 发送，Shift + Enter 换行"
+                  className="!rounded-lg"
+                  onPressEnter={(event) => {
+                    if (!event.shiftKey) {
+                      event.preventDefault();
+                      void sendAssistantMessage();
+                    }
+                  }}
+                />
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <span className="text-xs text-stone-500">支持 Markdown 表格、列表和代码块。</span>
+                  <Button
+                    type="primary"
+                    icon={<SendOutlined />}
+                    loading={assistantSending}
+                    disabled={!assistantDraft.trim() || !assistantSessionId}
+                    onClick={() => void sendAssistantMessage()}
+                    className="!bg-stone-950 text-[#fff]"
+                  >
+                    发送
+                  </Button>
+                </div>
+              </div>
+            </section>
           </div>
         </div>
       </Modal>
@@ -545,6 +682,47 @@ function MetricCard({
         {value}
         {suffix ? <span className="ml-1 text-base opacity-70">{suffix}</span> : null}
       </div>
+    </div>
+  );
+}
+
+function AssistantMarkdown({ content }: { content: string }) {
+  return (
+    <div className="max-w-none text-sm leading-7 text-stone-800">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          h1: ({ children }) => <h1 className="mb-3 mt-4 text-xl font-semibold text-stone-950">{children}</h1>,
+          h2: ({ children }) => <h2 className="mb-2 mt-4 text-lg font-semibold text-stone-950">{children}</h2>,
+          h3: ({ children }) => <h3 className="mb-2 mt-3 text-base font-semibold text-stone-950">{children}</h3>,
+          p: ({ children }) => <p className="my-2">{children}</p>,
+          ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5">{children}</ul>,
+          ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-5">{children}</ol>,
+          li: ({ children }) => <li>{children}</li>,
+          table: ({ children }) => (
+            <div className="my-3 overflow-x-auto rounded-lg border border-stone-200">
+              <table className="min-w-full border-collapse text-left text-xs">{children}</table>
+            </div>
+          ),
+          th: ({ children }) => <th className="border-b border-stone-200 bg-stone-100 px-3 py-2 font-semibold">{children}</th>,
+          td: ({ children }) => <td className="border-b border-stone-100 px-3 py-2 align-top">{children}</td>,
+          code: ({ children }) => (
+            <code className="rounded bg-stone-100 px-1.5 py-0.5 font-mono text-[12px] text-stone-900">{children}</code>
+          ),
+          pre: ({ children }) => (
+            <pre className="my-3 overflow-x-auto rounded-lg bg-stone-950 p-3 text-xs leading-6 text-stone-100">
+              {children}
+            </pre>
+          ),
+          blockquote: ({ children }) => (
+            <blockquote className="my-3 border-l-4 border-emerald-700 bg-emerald-50 px-3 py-2 text-stone-700">
+              {children}
+            </blockquote>
+          ),
+        }}
+      >
+        {content || " "}
+      </ReactMarkdown>
     </div>
   );
 }
@@ -601,7 +779,7 @@ function ReportDetail({ detail }: { detail: InterviewResultDetail }) {
           <Descriptions.Item label="口试录音">{summary.recordings_count || 0}</Descriptions.Item>
           <Descriptions.Item label="QA 轮次">{summary.qa_count}</Descriptions.Item>
           <Descriptions.Item label="更新时间">
-            {dayjs(summary.updated_at).format("YYYY-MM-DD HH:mm")}
+            {formatBeijingDateTime(summary.updated_at)}
           </Descriptions.Item>
         </Descriptions>
       </section>

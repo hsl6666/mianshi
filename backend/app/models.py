@@ -174,5 +174,10 @@ class InterviewFlowConfig(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default="global")
     oral_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    assistant_system_prompt: Mapped[str] = mapped_column(
+        Text,
+        default="你是面试分析助手。只基于候选人资料、笔试、口试、流程数据、岗位信息和查询结果回答，不做星座、八字、生肖、血型等招聘判断。",
+    )
+    assistant_user_prompt: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)

@@ -5,10 +5,12 @@ import { ROUTE_PATHS } from "@/constants/common";
 
 export default function NotFound() {
   const navigate = useNavigate();
+  const titleSuffix = import.meta.env.VITE_APP_TITLE_SUFFIX || "AI Interviewer";
+
   return (
     <>
       <Helmet>
-        <title>404 | {import.meta.env.VITE_APP_TITLE_SUFFIX}</title>
+        <title>{`404 | ${titleSuffix}`}</title>
       </Helmet>
       <Result
         status="404"

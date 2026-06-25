@@ -27,7 +27,11 @@ export const providerOptions: Array<{ label: string; value: LlmProvider }> = [
 export const providerDefaults: Record<LlmProvider, { model: string; api_base_url: string; models: string[] }> = {
   zhipu: { model: "glm-4.6", api_base_url: "https://open.bigmodel.cn/api/paas/v4", models: ["glm-4.6", "glm-4-plus", "glm-4-flash"] },
   openai: { model: "gpt-4o-mini", api_base_url: "https://api.openai.com/v1", models: ["gpt-4o", "gpt-4o-mini", "gpt-4.1-mini"] },
-  deepseek: { model: "deepseek-chat", api_base_url: "https://api.deepseek.com", models: ["deepseek-chat", "deepseek-reasoner"] },
+  deepseek: {
+    model: "deepseek-chat",
+    api_base_url: "https://api.deepseek.com",
+    models: ["deepseek-chat", "deepseek-reasoner", "deepseek-v4-pro"],
+  },
   qwen: {
     model: "qwen-plus",
     api_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",

@@ -39,7 +39,12 @@ export default function WrittenExamPage() {
         setSession(data);
         return Promise.all([
           fetchQuestions(data.role || String(data.candidate_profile.role || "")),
-          fetchInterviewConfig().catch(() => ({ oral_enabled: true, updated_at: new Date().toISOString() })),
+          fetchInterviewConfig().catch(() => ({
+            oral_enabled: true,
+            assistant_system_prompt: "",
+            assistant_user_prompt: "",
+            updated_at: new Date().toISOString(),
+          })),
         ]);
       })
       .then(([nextQuestions, nextConfig]) => {

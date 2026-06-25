@@ -200,11 +200,15 @@ export type LlmModelConfigUpdate = {
 
 export type InterviewFlowConfig = {
   oral_enabled: boolean;
+  assistant_system_prompt: string;
+  assistant_user_prompt: string;
   updated_at: string;
 };
 
 export type InterviewFlowConfigUpdate = {
   oral_enabled: boolean;
+  assistant_system_prompt: string;
+  assistant_user_prompt: string;
 };
 
 export type WrittenAnswers = Record<string, string | string[]>;
@@ -294,4 +298,12 @@ export type AssistantChatResponse = {
   answer: string;
   sql_used: string;
   warning: string;
+};
+
+export type AssistantStreamChunk = {
+  type: "chunk" | "done" | "error";
+  content?: string;
+  sql_used?: string;
+  warning?: string;
+  detail?: string;
 };

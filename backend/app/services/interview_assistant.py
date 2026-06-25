@@ -2,13 +2,20 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models import InterviewSession
-from app.services.llm_config import LlmConfigError, LlmProviderError, chat_completion
+from app.services.interview_config import get_or_create_interview_config
+from app.services.llm_config import (
+    LlmConfigError,
+    LlmProviderError,
+    chat_completion,
+    chat_completion_stream,
+)
 from app.services.reports import build_result_detail, build_result_summary
 
 SENSITIVE_KEYWORDS = (
@@ -63,9 +70,10 @@ async def answer_interview_question(db: Session, session_id: str, messages: list
             return {"answer": "未找到当前候选人数据，请先选择有效候选人。", "sql_used": "", "warning": ""}
         candidate_detail = build_result_detail(session)
 
-    planner_prompt = _build_planner_prompt(candidate_detail, all_summaries, messages)
+    config = get_or_create_interview_config(db)
+    planner_prompt = _build_planner_prompt(candidate_detail, all_summaries, messages, config.assistant_user_prompt or "")
 
-    raw_plan = await _ask_model(db, planner_prompt)
+    raw_plan = await _ask_model(db, planner_prompt, config.assistant_system_prompt or "")
     plan = _parse_plan(raw_plan)
     sql_used = ""
 
@@ -74,26 +82,102 @@ async def answer_interview_question(db: Session, session_id: str, messages: list
         safe_sql = _validate_sql(sql)
         rows = _run_query(db, safe_sql)
         sql_used = safe_sql
-        analyst_prompt = _build_analyst_prompt(candidate_detail, all_summaries, messages, safe_sql, rows)
-        answer = await _ask_model(db, analyst_prompt)
+        analyst_prompt = _build_analyst_prompt(
+            candidate_detail,
+            all_summaries,
+            messages,
+            safe_sql,
+            rows,
+            config.assistant_user_prompt or "",
+        )
+        answer = await _ask_model(db, analyst_prompt, config.assistant_system_prompt or "")
         return {"answer": answer.strip(), "sql_used": sql_used, "warning": ""}
 
     direct_answer = str(plan.get("answer") or "").strip()
     if direct_answer:
         return {"answer": direct_answer, "sql_used": "", "warning": ""}
 
-    fallback_prompt = _build_fallback_prompt(candidate_detail, all_summaries, messages)
-    answer = await _ask_model(db, fallback_prompt)
+    fallback_prompt = _build_fallback_prompt(
+        candidate_detail,
+        all_summaries,
+        messages,
+        config.assistant_user_prompt or "",
+    )
+    answer = await _ask_model(db, fallback_prompt, config.assistant_system_prompt or "")
     return {"answer": answer.strip(), "sql_used": "", "warning": ""}
 
 
-async def _ask_model(db: Session, prompt: str) -> str:
+async def stream_interview_answer(
+    db: Session,
+    session_id: str,
+    messages: list[dict[str, str]],
+) -> AsyncGenerator[dict[str, str], None]:
+    user_question = _latest_user_question(messages)
+    if not user_question:
+        yield {"type": "done", "content": "请输入你要分析的问题。", "sql_used": "", "warning": ""}
+        return
+
+    blocked_reason = _blocked_reason(user_question)
+    if blocked_reason:
+        yield {"type": "done", "content": blocked_reason, "sql_used": "", "warning": "sensitive_request_blocked"}
+        return
+
+    sessions = db.query(InterviewSession).order_by(InterviewSession.updated_at.desc()).all()
+    all_summaries = [build_result_summary(item) for item in sessions]
+    if not all_summaries:
+        yield {"type": "done", "content": "当前没有候选人数据，暂时无法分析。", "sql_used": "", "warning": ""}
+        return
+
+    candidate_detail: dict[str, Any] | None = None
+    if session_id != ALL_CANDIDATES_SESSION_ID:
+        session = db.get(InterviewSession, session_id)
+        if session is None:
+            yield {"type": "done", "content": "未找到当前候选人数据，请先选择有效候选人。", "sql_used": "", "warning": ""}
+            return
+        candidate_detail = build_result_detail(session)
+
+    config = get_or_create_interview_config(db)
+    planner_prompt = _build_planner_prompt(candidate_detail, all_summaries, messages, config.assistant_user_prompt or "")
+    raw_plan = await _ask_model(db, planner_prompt, config.assistant_system_prompt or "")
+    plan = _parse_plan(raw_plan)
+    sql_used = ""
+    answer_prompt = ""
+
+    if plan.get("mode") == "sql":
+        sql = str(plan.get("sql") or "").strip()
+        safe_sql = _validate_sql(sql)
+        rows = _run_query(db, safe_sql)
+        sql_used = safe_sql
+        answer_prompt = _build_analyst_prompt(
+            candidate_detail,
+            all_summaries,
+            messages,
+            safe_sql,
+            rows,
+            config.assistant_user_prompt or "",
+        )
+    else:
+        answer_prompt = _build_fallback_prompt(
+            candidate_detail,
+            all_summaries,
+            messages,
+            config.assistant_user_prompt or "",
+        )
+
+    parts: list[str] = []
+    async for chunk in _ask_model_stream(db, answer_prompt, config.assistant_system_prompt or ""):
+        parts.append(chunk)
+        yield {"type": "chunk", "content": chunk, "sql_used": sql_used, "warning": ""}
+    yield {"type": "done", "content": "".join(parts).strip(), "sql_used": sql_used, "warning": ""}
+
+
+async def _ask_model(db: Session, prompt: str, system_prompt: str) -> str:
     content = await chat_completion(
         db,
         messages=[
             {
                 "role": "system",
-                "content": "你是招聘分析助手。只基于候选人资料、笔试、口试、流程数据、岗位信息和查询结果回答，不做星座、八字、生肖、血型等招聘判断。",
+                "content": system_prompt,
             },
             {"role": "user", "content": prompt},
         ],
@@ -102,6 +186,21 @@ async def _ask_model(db: Session, prompt: str) -> str:
         require_config=True,
     )
     return (content or "").strip()
+
+
+async def _ask_model_stream(db: Session, prompt: str, system_prompt: str) -> AsyncGenerator[str, None]:
+    async for chunk in chat_completion_stream(
+        db,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.2,
+        timeout=60,
+        require_config=True,
+    ):
+        if chunk:
+            yield chunk
 
 
 def _latest_user_question(messages: list[dict[str, str]]) -> str:
@@ -126,6 +225,7 @@ def _build_planner_prompt(
     candidate_detail: dict[str, Any] | None,
     all_summaries: list[dict[str, Any]],
     messages: list[dict[str, str]],
+    assistant_user_prompt: str,
 ) -> str:
     return f"""
 请你决定是直接回答，还是先生成 SQL 查询再回答。
@@ -157,10 +257,13 @@ def _build_planner_prompt(
 对话历史：
 {json.dumps(messages[-12:], ensure_ascii=False)}
 
+额外用户提示词：
+{assistant_user_prompt or "无"}
+
 请仅输出 JSON，不要加 markdown：
 {{
   "mode": "answer" 或 "sql",
-  "answer": "当 mode=answer 时给出完整中文回答，否则为空字符串",
+  "answer": "",
   "sql": "当 mode=sql 时给出 SQL，否则为空字符串",
   "reason": "一句话说明为什么这么做"
 }}
@@ -173,6 +276,7 @@ def _build_analyst_prompt(
     messages: list[dict[str, str]],
     sql: str,
     rows: list[dict[str, Any]],
+    assistant_user_prompt: str,
 ) -> str:
     return f"""
 你是招聘分析助手。请基于当前候选人详情、全局候选人摘要、用户问题和 SQL 查询结果进行回答。
@@ -198,6 +302,9 @@ def _build_analyst_prompt(
 SQL 结果：
 {json.dumps(rows, ensure_ascii=False)}
 
+额外用户提示词：
+{assistant_user_prompt or "无"}
+
 请直接输出中文回答。
 """.strip()
 
@@ -206,6 +313,7 @@ def _build_fallback_prompt(
     candidate_detail: dict[str, Any] | None,
     all_summaries: list[dict[str, Any]],
     messages: list[dict[str, str]],
+    assistant_user_prompt: str,
 ) -> str:
     return f"""
 你是招聘分析助手。请仅根据当前候选人详情、全局候选人摘要和对话历史，直接回答用户问题。
@@ -219,6 +327,9 @@ def _build_fallback_prompt(
 
 最近对话：
 {json.dumps(messages[-12:], ensure_ascii=False)}
+
+额外用户提示词：
+{assistant_user_prompt or "无"}
 
 请直接输出中文回答。
 """.strip()

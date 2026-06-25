@@ -3,6 +3,7 @@ import type {
   CandidateProfile,
   AssistantChatMessage,
   AssistantChatResponse,
+  AssistantStreamChunk,
   InterviewResultDetail,
   InterviewResultSummary,
   InterviewSession,
@@ -74,6 +75,72 @@ export async function chatWithInterviewAssistant(sessionId: string, messages: As
     messages: messages.map((item) => ({ role: item.role, content: item.content })),
   });
   return data;
+}
+
+export async function streamChatWithInterviewAssistant(
+  sessionId: string,
+  messages: AssistantChatMessage[],
+  handlers: {
+    onChunk: (chunk: AssistantStreamChunk) => void;
+    onDone: (chunk: AssistantStreamChunk) => void;
+  },
+) {
+  const response = await fetch(`${API_BASE_URL}/api/admin/interview-assistant/chat/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session_id: sessionId,
+      messages: messages.map((item) => ({ role: item.role, content: item.content })),
+    }),
+  });
+
+  if (!response.ok || !response.body) {
+    let detail = "智能体回答失败，请确认模型配置和后端服务可用";
+    try {
+      const data = await response.json();
+      if (typeof data?.detail === "string" && data.detail) detail = data.detail;
+    } catch {
+      // ignore non-json error payloads
+    }
+    throw new Error(detail);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+
+  function consumeFrame(frame: string) {
+    const dataLine = frame
+      .split("\n")
+      .find((line) => line.startsWith("data:"));
+    if (!dataLine) return;
+    const payload = JSON.parse(dataLine.slice(5).trim()) as AssistantStreamChunk;
+    if (payload.type === "error") {
+      throw new Error(payload.detail || "智能体回答失败，请稍后重试");
+    }
+    if (payload.type === "chunk") {
+      handlers.onChunk(payload);
+    } else if (payload.type === "done") {
+      handlers.onDone(payload);
+    }
+  }
+
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() || "";
+
+    for (const frame of frames) {
+      consumeFrame(frame);
+    }
+
+    if (done) {
+      if (buffer.trim()) consumeFrame(buffer);
+      break;
+    }
+  }
 }
 
 export async function deleteInterviewResult(sessionId: string) {

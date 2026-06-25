@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import json
 
 import httpx
 from sqlalchemy.orm import Session
@@ -119,6 +120,62 @@ async def chat_completion(
         raise LlmProviderError("模型响应格式不符合 OpenAI Chat Completions 兼容格式") from exc
     except httpx.HTTPError as exc:
         raise LlmProviderError(f"模型请求失败：{exc}") from exc
+
+
+async def chat_completion_stream(
+    db: Session,
+    messages: list[dict[str, str]],
+    temperature: float = 0.6,
+    timeout: int = 60,
+    require_config: bool = False,
+):
+    config = get_or_create_model_config(db)
+    config_error = _validate_chat_config(config)
+    if config_error:
+        if require_config:
+            raise LlmConfigError(config_error)
+        return
+
+    url = _chat_completions_url(config.api_base_url)
+    if not url:
+        if require_config:
+            raise LlmConfigError("模型 Base URL 不能为空")
+        return
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            async with client.stream(
+                "POST",
+                url,
+                headers={"Authorization": f"Bearer {config.api_key}", "Content-Type": "application/json"},
+                json={
+                    "model": config.model,
+                    "messages": messages,
+                    "temperature": temperature,
+                    "stream": True,
+                },
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line or not line.startswith("data:"):
+                        continue
+                    payload = line[5:].strip()
+                    if payload == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(payload)
+                        delta = data["choices"][0]["delta"].get("content")
+                    except (KeyError, IndexError, TypeError, ValueError):
+                        continue
+                    if delta:
+                        yield str(delta)
+    except httpx.TimeoutException as exc:
+        raise LlmProviderError("模型流式请求超时，请检查网络、Base URL 或模型服务状态") from exc
+    except httpx.HTTPStatusError as exc:
+        detail = _response_error_detail(exc.response)
+        raise LlmProviderError(f"模型服务返回错误 {exc.response.status_code}：{detail}") from exc
+    except httpx.HTTPError as exc:
+        raise LlmProviderError(f"模型流式请求失败：{exc}") from exc
 
 
 def _chat_completions_url(api_base_url: str) -> str:

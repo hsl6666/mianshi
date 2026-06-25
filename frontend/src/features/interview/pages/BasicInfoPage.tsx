@@ -104,20 +104,22 @@ export default function BasicInfoPage() {
 
   useEffect(() => {
     if (isReadOnly) return;
-    createOrUpdateSession(sessionId, profile)
+    fetchSession(sessionId)
       .then(setSession)
-      .catch(() => message.warning("后端暂未连接，本地表单仍会保存"));
-  }, [isReadOnly, profile, sessionId]);
+      .catch(() => {
+        setSession(null);
+      });
+  }, [isReadOnly, sessionId]);
 
   useEffect(() => {
-    if (isReadOnly) return;
+    if (isReadOnly || !session) return;
     const timer = window.setInterval(() => {
       fetchSession(sessionId)
         .then(setSession)
         .catch(() => undefined);
     }, 2000);
     return () => window.clearInterval(timer);
-  }, [isReadOnly, sessionId]);
+  }, [isReadOnly, session, sessionId]);
 
   useEffect(() => {
     return () => {
@@ -276,7 +278,10 @@ export default function BasicInfoPage() {
     setSaving(true);
     try {
       saveProfile(sessionId, profile);
-      await patchSession(sessionId, profile);
+      const nextSession = session
+        ? await patchSession(sessionId, profile)
+        : await createOrUpdateSession(sessionId, profile);
+      setSession(nextSession);
       navigate("/interview/written");
     } catch {
       message.error("保存到后端失败，请确认后端已启动");

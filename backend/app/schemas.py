@@ -232,11 +232,15 @@ class LlmModelConfigUpdate(BaseModel):
 
 class InterviewFlowConfigRead(BaseModel):
     oral_enabled: bool
+    assistant_system_prompt: str = ""
+    assistant_user_prompt: str = ""
     updated_at: datetime
 
 
 class InterviewFlowConfigUpdate(BaseModel):
     oral_enabled: bool = True
+    assistant_system_prompt: str = ""
+    assistant_user_prompt: str = ""
 
 
 class JobPositionCreate(BaseModel):
@@ -319,3 +323,11 @@ class AssistantChatResponse(BaseModel):
     answer: str
     sql_used: str = ""
     warning: str = ""
+
+
+class AssistantStreamChunk(BaseModel):
+    type: Literal["chunk", "done", "error"]
+    content: str = ""
+    sql_used: str = ""
+    warning: str = ""
+    detail: str = ""
